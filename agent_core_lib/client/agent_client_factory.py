@@ -113,36 +113,69 @@ class AgentClientFactory(object):
     def _build_cli_agent(
         self, open_cfg: Any, *, config_key: str, client_cls,
     ) -> AgentProvider:
+        # 1. fetch — pull the CLI sub-config + every field we'll touch
+        # on it into named locals up front. Same rule as the LLM
+        # connection factories.
         cli_cfg = getattr(open_cfg, config_key, None)
+        repository_root_path_raw = getattr(open_cfg, 'repository_root_path', '')
+
+        # 2. validate — the CLI block must be present; everything else
+        # we normalize below.
         if cli_cfg is None:
             raise RuntimeError(
                 f'agent_backend={config_key} requires a {config_key} configuration block; '
                 'rebuild the configuration template'
             )
-        repository_root_path = str(getattr(open_cfg, 'repository_root_path', '') or '').strip()
+
+        # Now that cli_cfg is known to exist, fetch every field off it.
+        binary_raw = getattr(cli_cfg, 'binary', '')
+        model_raw = getattr(cli_cfg, 'model', '')
+        max_turns = getattr(cli_cfg, 'max_turns', None)
+        effort_raw = getattr(cli_cfg, 'effort', '')
+        allowed_tools_raw = getattr(cli_cfg, 'allowed_tools', '')
+        disallowed_tools_raw = getattr(cli_cfg, 'disallowed_tools', '')
+        bypass_permissions_raw = getattr(cli_cfg, 'bypass_permissions', False)
+        timeout_seconds_raw = getattr(cli_cfg, 'timeout_seconds', 1800)
+        model_smoke_test_enabled_raw = getattr(
+            cli_cfg, 'model_smoke_test_enabled', False
+        )
+        architecture_doc_path_raw = getattr(cli_cfg, 'architecture_doc_path', '')
+        lessons_path_raw = getattr(cli_cfg, 'lessons_path', '')
+
+        # 2b. normalize — coerce to the types the client constructor
+        # expects, mostly "string-or-empty".
+        repository_root_path = str(repository_root_path_raw or '').strip()
+        binary = str(binary_raw or '')
+        model = str(model_raw or '')
+        effort = str(effort_raw or '')
+        allowed_tools = str(allowed_tools_raw or '')
+        disallowed_tools = str(disallowed_tools_raw or '')
+        bypass_permissions = bool(bypass_permissions_raw)
+        timeout_seconds = int(timeout_seconds_raw or 1800)
+        model_smoke_test_enabled = (
+            not self._testing and bool(model_smoke_test_enabled_raw)
+        )
+        architecture_doc_path = str(architecture_doc_path_raw or '')
+        lessons_path = str(lessons_path_raw or '')
+
+        # 3. use — feed only named, already-normalized locals into the
+        # client constructor.
         return client_cls(
-            binary=str(getattr(cli_cfg, 'binary', '') or ''),
-            model=str(getattr(cli_cfg, 'model', '') or ''),
-            max_turns=getattr(cli_cfg, 'max_turns', None),
-            effort=str(getattr(cli_cfg, 'effort', '') or ''),
-            allowed_tools=str(getattr(cli_cfg, 'allowed_tools', '') or ''),
-            disallowed_tools=str(getattr(cli_cfg, 'disallowed_tools', '') or ''),
-            bypass_permissions=bool(getattr(cli_cfg, 'bypass_permissions', False)),
+            binary=binary,
+            model=model,
+            max_turns=max_turns,
+            effort=effort,
+            allowed_tools=allowed_tools,
+            disallowed_tools=disallowed_tools,
+            bypass_permissions=bypass_permissions,
             docker_mode_on=self._docker_mode_on,
             read_only_tools_on=self._read_only_tools_on,
-            timeout_seconds=int(getattr(cli_cfg, 'timeout_seconds', 1800) or 1800),
+            timeout_seconds=timeout_seconds,
             max_retries=self._max_retries,
             repository_root_path=repository_root_path,
-            model_smoke_test_enabled=(
-                not self._testing
-                and bool(getattr(cli_cfg, 'model_smoke_test_enabled', False))
-            ),
-            architecture_doc_path=str(
-                getattr(cli_cfg, 'architecture_doc_path', '') or ''
-            ),
-            lessons_path=str(
-                getattr(cli_cfg, 'lessons_path', '') or ''
-            ),
+            model_smoke_test_enabled=model_smoke_test_enabled,
+            architecture_doc_path=architecture_doc_path,
+            lessons_path=lessons_path,
             # Product-specific refusal guidance the spawner threads in;
             # every CLI agent (Claude, Codex) receives it identically so
             # the boundary block is consistent across backends.
@@ -157,25 +190,44 @@ class AgentClientFactory(object):
             resolved_openhands_llm_settings,
         )
 
+        # 1. fetch — pull the openhands sub-config + every field we'll
+        # touch on it into named locals up front.
         openhands_cfg = getattr(open_cfg, 'openhands', None)
+
+        # 2. validate — the openhands block must be present.
         if openhands_cfg is None:
             raise RuntimeError(
                 'agent_backend=openhands requires an openhands configuration block; '
                 'rebuild the configuration template'
             )
+
+        # Now that openhands_cfg exists, fetch every field off it.
+        api_key = openhands_cfg.api_key
+        poll_interval_seconds_raw = openhands_cfg.get('poll_interval_seconds', 2.0)
+        max_poll_attempts_raw = openhands_cfg.get('max_poll_attempts', 900)
+        model_smoke_test_enabled_raw = getattr(
+            openhands_cfg, 'model_smoke_test_enabled', True
+        )
+
+        # 2b. normalize.
+        base_url = resolved_openhands_base_url(openhands_cfg, testing=self._testing)
+        llm_settings = resolved_openhands_llm_settings(
+            openhands_cfg, testing=self._testing,
+        )
+        poll_interval_seconds = float(poll_interval_seconds_raw)
+        max_poll_attempts = int(max_poll_attempts_raw)
+        model_smoke_test_enabled = (
+            not self._testing and bool(model_smoke_test_enabled_raw)
+        )
+
+        # 3. use.
         return OpenHandsClient(
-            resolved_openhands_base_url(openhands_cfg, testing=self._testing),
-            openhands_cfg.api_key,
+            base_url,
+            api_key,
             self._max_retries,
-            llm_settings=resolved_openhands_llm_settings(
-                openhands_cfg,
-                testing=self._testing,
-            ),
-            poll_interval_seconds=float(openhands_cfg.get('poll_interval_seconds', 2.0)),
-            max_poll_attempts=int(openhands_cfg.get('max_poll_attempts', 900)),
-            model_smoke_test_enabled=(
-                not self._testing
-                and bool(getattr(openhands_cfg, 'model_smoke_test_enabled', True))
-            ),
+            llm_settings=llm_settings,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_attempts=max_poll_attempts,
+            model_smoke_test_enabled=model_smoke_test_enabled,
             workspace_refusal_guidance=self._workspace_refusal_guidance,
         )

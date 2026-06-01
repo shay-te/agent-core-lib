@@ -83,17 +83,24 @@ def read_session_id_from(obj: object) -> str:
     """
     if obj is None:
         return ''
-    return (
-        fix_session_id(getattr(obj, AGENT_SESSION_ID, ''))
-        or fix_session_id(getattr(obj, 'claude_session_id', ''))
-    )
+    # 1. fetch — both candidate session-id attrs, up front.
+    agent_session_id = getattr(obj, AGENT_SESSION_ID, '')
+    claude_session_id = getattr(obj, 'claude_session_id', '')
+    # 2. normalize — fix_session_id strips noise and returns '' for
+    # anything unrecognised.
+    canonical = fix_session_id(agent_session_id) or fix_session_id(claude_session_id)
+    # 3. use.
+    return canonical
 
 
 def read_session_id_from_mapping(payload: object) -> str:
     """Return the canonical session id from mapping payloads."""
     if not isinstance(payload, Mapping):
         return ''
-    return (
-        fix_session_id(payload.get(AGENT_SESSION_ID))
-        or fix_session_id(payload.get('claude_session_id'))
-    )
+    # 1. fetch.
+    agent_session_id = payload.get(AGENT_SESSION_ID)
+    claude_session_id = payload.get('claude_session_id')
+    # 2. normalize.
+    canonical = fix_session_id(agent_session_id) or fix_session_id(claude_session_id)
+    # 3. use.
+    return canonical

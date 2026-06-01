@@ -212,8 +212,12 @@ def build_inputs_from_session(
     last_user = ''
     last_assistant = ''
     for event in (recent_events or []):
+        # 1. fetch — per-iteration: every field we touch on this event,
+        # named at the top of the loop body.
         event_type = getattr(event, 'event_type', '') or ''
         raw = getattr(event, 'raw', {}) or {}
+        # 2. validate / branch on shape.
+        # 3. use.
         if event_type == 'assistant':
             text = _extract_assistant_text(raw)
             if text:
@@ -243,9 +247,13 @@ def _message_content(raw: dict):
     Yields ``None`` when ``raw`` (or its ``message``) isn't a dict — the
     flatteners treat that as "no text".
     """
-    message = raw.get('message') if isinstance(raw, dict) else None
+    # 1. fetch.
+    raw_is_dict = isinstance(raw, dict)
+    message = raw.get('message') if raw_is_dict else None
+    # 2. validate.
     if not isinstance(message, dict):
         return None
+    # 3. use.
     return message.get('content')
 
 
