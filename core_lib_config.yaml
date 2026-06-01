@@ -1,0 +1,9 @@
+defaults:
+  - core_lib
+  - agent_core_lib
+
+core_lib_module: agent_core_lib
+
+hydra:
+  run:
+    dir: .

@@ -1,0 +1,56 @@
+variables:
+  POSTGRES_USER: x
+  POSTGRES_PASSWORD: x
+  POSTGRES_DB: s
+  solr_core_name: objective_love
+
+core_lib:
+  data:
+    db:
+      protocol: postgresql
+      username: ${oc.env:POSTGRES_USER}
+      password: ${oc.env:POSTGRES_PASSWORD}
+      address: localhost
+      port: 5432
+      file: ${oc.env:POSTGRES_DB}
+    memcached:
+      url:
+        host: localhost
+        port: 11211
+    solr:
+      always_commit: true
+      url:
+        protocol: http
+        host: localhost
+        port: 8983
+        path: solr
+        file: ${oc.env:solr_core_name}
+
+docker-compose:
+version: '2'
+
+services:
+
+  core_lib_name:
+    build:
+      context: ""
+      dockerfile: ./Dockerfile
+    ports:
+      - '8080:8080'
+    depends_on:
+      db:
+        condition: service_healthy
+      solr:
+        condition: service_healthy
+      memcached:
+        condition: service_healthy
+    restart: always
+
+  db:
+    image: postgres
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}

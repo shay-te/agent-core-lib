@@ -242,21 +242,43 @@ def prepend_forbidden_repository_guardrails(prompt: str, raw_value: object = Non
 
 
 def repository_scope_text(task, prepared_task=None) -> str:
-    repositories: list = []
-    repository_branches: dict = {}
-    branch_name = normalized_text(getattr(task, 'branch_name', ''))
+    # 1. fetch — every field we'll consume off task / prepared_task,
+    # pulled into named locals at the top per the workspace fetch →
+    # validate → use rule.
+    task_branch_raw = getattr(task, 'branch_name', '')
+    task_repositories = getattr(task, 'repositories', None) or []
+    task_repository_branches = getattr(task, 'repository_branches', None) or {}
+    prepared_repositories = (
+        getattr(prepared_task, 'repositories', None) if prepared_task is not None else None
+    )
+    prepared_repository_branches = (
+        getattr(prepared_task, 'repository_branches', None)
+        if prepared_task is not None else None
+    )
+    prepared_branches_by_repository = (
+        getattr(prepared_task, 'branches_by_repository', None)
+        if prepared_task is not None else None
+    )
+    prepared_branch_raw = (
+        getattr(prepared_task, 'branch_name', '') if prepared_task is not None else ''
+    )
+
+    # 2. normalize — prefer the prepared-task values when present, else
+    # fall back to the task values. The result is one canonical local
+    # per piece of information.
+    branch_name = normalized_text(prepared_branch_raw or task_branch_raw)
     if prepared_task is not None:
-        repositories = getattr(prepared_task, 'repositories', None) or []
+        repositories = prepared_repositories or []
         repository_branches = (
-            getattr(prepared_task, 'repository_branches', None)
-            or getattr(prepared_task, 'branches_by_repository', None)
+            prepared_repository_branches
+            or prepared_branches_by_repository
             or {}
         )
-        if getattr(prepared_task, 'branch_name', ''):
-            branch_name = prepared_task.branch_name
     else:
-        repository_branches = getattr(task, 'repository_branches', {}) or {}
-        repositories = getattr(task, 'repositories', []) or []
+        repositories = task_repositories
+        repository_branches = task_repository_branches
+
+    # 3. use — render the prompt body from the named locals only.
     if not repositories:
         return (
             'Before making changes, try to pull the latest changes from the repository '
@@ -267,9 +289,8 @@ def repository_scope_text(task, prepared_task=None) -> str:
         )
     repository_lines = []
     for repository in repositories:
-        repository_branch_name = repository_branches.get(
-            getattr(repository, 'id', ''), branch_name,
-        )
+        repository_id = getattr(repository, 'id', '')
+        repository_branch_name = repository_branches.get(repository_id, branch_name)
         destination_branch = text_from_attr(repository, 'destination_branch')
         destination_text = (
             destination_branch if destination_branch else 'the repository default branch'
@@ -293,16 +314,28 @@ def agents_instructions_text(prepared_task=None) -> str:
 
 
 def task_branch_name(task, prepared_task=None) -> str:
-    if prepared_task is not None and getattr(prepared_task, 'branch_name', ''):
-        return prepared_task.branch_name
-    return normalized_text(getattr(task, 'branch_name', ''))
+    # 1. fetch.
+    prepared_branch = (
+        getattr(prepared_task, 'branch_name', '') if prepared_task is not None else ''
+    )
+    task_branch = getattr(task, 'branch_name', '')
+    # 2. normalize — prepared takes precedence when it carries a value.
+    # 3. use.
+    if prepared_branch:
+        return prepared_branch
+    return normalized_text(task_branch)
 
 
 def task_conversation_title(task, suffix: str = '') -> str:
-    task_id = normalized_text(str(getattr(task, 'id', '') or ''))
+    # 1. fetch.
+    task_id_raw = getattr(task, 'id', '')
+    task_summary_raw = getattr(task, 'summary', '')
+    # 2. normalize.
+    task_id = normalized_text(str(task_id_raw or ''))
+    task_summary = condensed_text(str(task_summary_raw or ''))
+    # 3. use.
     if task_id:
         return f'{task_id}{suffix}'
-    task_summary = condensed_text(str(getattr(task, 'summary', '') or ''))
     if task_summary:
         return f'{task_summary}{suffix}'
     return f'task{suffix}'
@@ -313,10 +346,14 @@ def review_conversation_title(
     task_id: str = '',
     task_summary: str = '',
 ) -> str:
+    # 1. fetch.
+    comment_id = getattr(comment, 'comment_id', '')
+    # 2. normalize.
     normalized_task_id = normalized_text(task_id)
+    # 3. use.
     if normalized_task_id:
         return f'{normalized_task_id} [review]'
-    return f'Fix review comment {getattr(comment, "comment_id", "")}'
+    return f'Fix review comment {comment_id}'
 
 
 def review_comment_context_text(comment) -> str:
@@ -372,8 +409,13 @@ def review_comment_code_snippet(
     *,
     context_lines: int = _REVIEW_SNIPPET_CONTEXT_LINES,
 ) -> str:
-    file_path = normalized_text(getattr(comment, 'file_path', ''))
+    # 1. fetch — every field touched on ``comment``, plus the
+    # workspace input, in one block at the top.
+    file_path_raw = getattr(comment, 'file_path', '')
     raw_line = getattr(comment, 'line_number', '')
+
+    # 2. normalize / validate.
+    file_path = normalized_text(file_path_raw)
     workspace = normalized_text(workspace_path)
     if not file_path or not workspace:
         return ''
@@ -383,6 +425,7 @@ def review_comment_code_snippet(
         return ''
     if line_int <= 0:
         return ''
+    # 3. use — falls through to the file-read + rendering below.
     full_path = os.path.join(workspace, file_path)
     try:
         with open(full_path, 'r', encoding='utf-8', errors='replace') as handle:
@@ -418,9 +461,17 @@ def review_comments_batch_text(comments, workspace_path: str = '') -> str:
         return ''
     lines: list[str] = []
     for index, comment in enumerate(comments, start=1):
-        author = normalized_text(getattr(comment, 'author', '')) or 'reviewer'
-        body = str(getattr(comment, 'body', '') or '').strip()
+        # 1. fetch — per-iteration: every field we touch on this
+        # comment, at the top of the loop body.
+        author_raw = getattr(comment, 'author', '')
+        body_raw = getattr(comment, 'body', '')
+
+        # 2. normalize.
+        author = normalized_text(author_raw) or 'reviewer'
+        body = str(body_raw or '').strip()
         localization = review_comment_location_text(comment)
+
+        # 3. use — render the entry from the named locals.
         header = f'{index}.'
         if localization:
             indented = '\n'.join(f'   {line}' for line in localization.split('\n'))
