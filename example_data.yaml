@@ -2,9 +2,9 @@ variables:
   MYSQL_USER: xyz
   MYSQL_PASSWORD: xx
   MYSQL_DB: db
-  postgres_user: x
-  postgres_password: x
-  postgres_db: s
+  POSTGRES_USER: x
+  POSTGRES_PASSWORD: x
+  POSTGRES_DB: s
   sqlite_db: db
   solr_core_name: objective_love
 
@@ -20,11 +20,11 @@ core_lib:
       - protocol: sqlite
         file: ${oc.env:sqlite_db}
       - protocol: postgresql
-        username: ${oc.env:postgres_user}
-        password: ${oc.env:postgres_password}
+        username: ${oc.env:POSTGRES_USER}
+        password: ${oc.env:POSTGRES_PASSWORD}
         address: localhost
         port: 5432
-        file: ${oc.env:postgres_db}
+        file: ${oc.env:POSTGRES_DB}
     memcached:
       url:
         host: localhost
@@ -63,6 +63,6 @@ services:
     ports:
       - '5432:5432'
     environment:
-      POSTGRES_USER: ${postgres_user}
-      POSTGRES_PASSWORD: ${postgres_password}
-      POSTGRES_DB: ${postgres_db}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
