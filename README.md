@@ -46,6 +46,9 @@ factory selects the backend from config.
   representation and a normalized result envelope across backends.
 - **Output-side safety scan** — detective credential/phishing scan over
   the agent's final response (logs redacted previews only).
+- **Credential pattern bank** — shared high-confidence credential and
+  operator-phishing detectors used by agent outputs and sandbox
+  workspace scans.
 - **Resume snapshots** — render a generic markdown snapshot so another
   agent can continue from recent conversation state.
 - **Backend factory** — pick the configured backend and expose it
@@ -190,7 +193,7 @@ var is unset — compatibility only; prefer the generic name.
 
 ```bash
 # Run this library's own test suite (no network, no DB — all fakes):
-python -m unittest discover -s agent_core_lib/agent_core_lib/tests -p "test_*.py"
+python -m unittest discover -s agent_core_lib/tests -p "test_*.py"
 ```
 
 Tests are self-contained (fake API keys / `localhost` URLs / fake model
