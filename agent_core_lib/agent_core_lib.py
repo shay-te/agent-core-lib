@@ -14,10 +14,10 @@ from agent_provider_contracts.agent_provider_contracts.agent_provider import (
 )
 from core_lib.core_lib import CoreLib
 
-from agent_core_lib.agent_core_lib.client.agent_client_factory import (
+from agent_core_lib.client.agent_client_factory import (
     AgentClientFactory,
 )
-from agent_core_lib.agent_core_lib.platform import AgentPlatform
+from agent_core_lib.platform import AgentPlatform
 
 
 class AgentCoreLib(CoreLib):

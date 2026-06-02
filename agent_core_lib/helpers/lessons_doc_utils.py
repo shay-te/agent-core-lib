@@ -4,7 +4,7 @@ import logging
 import re
 from pathlib import Path
 
-from agent_core_lib.agent_core_lib.helpers.cached_file_render import (
+from agent_core_lib.helpers.cached_file_render import (
     cached_file_render,
 )
 

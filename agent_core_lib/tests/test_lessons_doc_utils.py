@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from agent_core_lib.agent_core_lib.helpers.lessons_doc_utils import read_lessons_file
+from agent_core_lib.helpers.lessons_doc_utils import read_lessons_file
 
 
 class ReadLessonsFileTests(unittest.TestCase):

@@ -81,7 +81,7 @@ need the dependency for the backend you actually use.
 
 ```python
 from agent_core_lib.agent_core_lib import AgentCoreLib, AgentPlatform
-from agent_core_lib.agent_core_lib.client.agent_client_factory import resolve_platform
+from agent_core_lib.client.agent_client_factory import resolve_platform
 
 # `config` is YOUR application's config object. The factory reads, by
 # attribute: `agent_backend` plus a per-backend block (`config.claude`,
@@ -122,7 +122,7 @@ config-key wiring, and a lazy build method.
 The helpers are pure functions you can use without the factory:
 
 ```python
-from agent_core_lib.agent_core_lib.helpers.agent_prompt_utils import (
+from agent_core_lib.helpers.agent_prompt_utils import (
     workspace_scope_block,
     security_guardrails_text,
 )
@@ -144,10 +144,10 @@ guardrails = security_guardrails_text()   # generic untrusted-content rules
 ## Backend-factory example
 
 ```python
-from agent_core_lib.agent_core_lib.client.agent_client_factory import (
+from agent_core_lib.client.agent_client_factory import (
     AgentClientFactory,
 )
-from agent_core_lib.agent_core_lib.platform import AgentPlatform
+from agent_core_lib.platform import AgentPlatform
 
 factory = AgentClientFactory(
     max_retries=3,
@@ -190,7 +190,7 @@ var is unset — compatibility only; prefer the generic name.
 
 ```bash
 # Run this library's own test suite (no network, no DB — all fakes):
-python -m unittest discover -s agent_core_lib/agent_core_lib/tests -p "test_*.py"
+python -m unittest discover -s agent_core_lib/tests -p "test_*.py"
 ```
 
 Tests are self-contained (fake API keys / `localhost` URLs / fake model

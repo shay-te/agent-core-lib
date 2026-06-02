@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_core_lib.agent_core_lib.helpers.agents_instruction_utils import (
+from agent_core_lib.helpers.agents_instruction_utils import (
     AGENTS_FILE_NAME,
     SKIPPED_DIRECTORIES,
     _agents_entries,

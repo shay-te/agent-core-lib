@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from agent_core_lib.agent_core_lib.helpers.cached_file_render import cached_file_render
+from agent_core_lib.helpers.cached_file_render import cached_file_render
 
 
 class CachedFileRenderTests(unittest.TestCase):

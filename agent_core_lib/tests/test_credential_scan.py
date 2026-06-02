@@ -25,7 +25,7 @@ import types
 import unittest
 from unittest import mock
 
-from agent_core_lib.agent_core_lib.helpers.credential_scan import (
+from agent_core_lib.helpers.credential_scan import (
     scan_text_for_credentials_and_phishing,
 )
 
