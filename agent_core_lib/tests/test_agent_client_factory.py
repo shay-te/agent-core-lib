@@ -22,13 +22,13 @@ from unittest.mock import MagicMock, patch
 
 from agent_provider_contracts.agent_provider_contracts.agent_provider import AgentProvider
 
-from agent_core_lib.agent_core_lib.agent_core_lib import AgentCoreLib
-from agent_core_lib.agent_core_lib.client.agent_client_factory import (
+from agent_core_lib.agent_core_lib import AgentCoreLib
+from agent_core_lib.client.agent_client_factory import (
     AgentClientFactory,
     _PLATFORM_ALIASES,
     resolve_platform,
 )
-from agent_core_lib.agent_core_lib.platform import AgentPlatform
+from agent_core_lib.platform import AgentPlatform
 
 
 # ---------------------------------------------------------------------------

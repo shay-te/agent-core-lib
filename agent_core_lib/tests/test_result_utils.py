@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.agent_core_lib.data.fields import ImplementationFields
-from agent_core_lib.agent_core_lib.helpers.result_utils import (
+from agent_core_lib.data.fields import ImplementationFields
+from agent_core_lib.helpers.result_utils import (
     build_openhands_result,
     openhands_session_id,
     openhands_success_flag,

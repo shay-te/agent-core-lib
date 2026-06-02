@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.agent_core_lib.helpers.credential_patterns import (
+from agent_core_lib.helpers.credential_patterns import (
     PATTERN_NAMES,
     PHISHING_PATTERN_NAMES,
     CredentialFinding,

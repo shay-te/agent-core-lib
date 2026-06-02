@@ -1,4 +1,4 @@
-from agent_core_lib.agent_core_lib.helpers.session_id_utils import AGENT_SESSION_ID
+from agent_core_lib.helpers.session_id_utils import AGENT_SESSION_ID
 
 
 class ImplementationFields(object):

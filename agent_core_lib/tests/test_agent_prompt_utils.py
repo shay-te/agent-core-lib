@@ -10,7 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent_core_lib.agent_core_lib.helpers.agent_prompt_utils import (
+from agent_core_lib.helpers.agent_prompt_utils import (
     IGNORED_REPOSITORY_FOLDERS_ENV,
     _LEGACY_IGNORED_REPOSITORY_FOLDERS_ENV,
     forbidden_repository_guardrails_text,

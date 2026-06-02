@@ -20,11 +20,11 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from agent_core_lib.agent_core_lib.helpers.credential_scan import (
+from agent_core_lib.helpers.credential_scan import (
     scan_text_for_credentials_and_phishing,
 )
 
-_PATTERN_MODULE = 'agent_core_lib.agent_core_lib.helpers.credential_patterns'
+_PATTERN_MODULE = 'agent_core_lib.helpers.credential_patterns'
 
 
 class ScanTextForCredentialsAndPhishingTests(unittest.TestCase):

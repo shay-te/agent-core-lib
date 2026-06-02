@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.agent_core_lib.helpers.session_id_utils import (
+from agent_core_lib.helpers.session_id_utils import (
     AGENT_SESSION_ID,
     fix_session_id,
     has_session_id,

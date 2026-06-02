@@ -10,7 +10,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from agent_core_lib.agent_core_lib.helpers.resume_prompt_utils import (
+from agent_core_lib.helpers.resume_prompt_utils import (
     ResumePromptInputs,
     build_inputs_from_session,
     render_resume_prompt,

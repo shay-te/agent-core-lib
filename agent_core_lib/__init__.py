@@ -10,5 +10,5 @@ Public surface:
     AgentPlatform   - enum of supported backends.
 """
 
-from agent_core_lib.agent_core_lib.agent_core_lib import AgentCoreLib
-from agent_core_lib.agent_core_lib.platform import AgentPlatform
+from agent_core_lib.agent_core_lib import AgentCoreLib
+from agent_core_lib.platform import AgentPlatform

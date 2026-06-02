@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_core_lib.agent_core_lib.helpers.architecture_doc_utils import (
+from agent_core_lib.helpers.architecture_doc_utils import (
     read_architecture_doc,
 )
 

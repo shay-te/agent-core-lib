@@ -14,12 +14,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from agent_core_lib.agent_core_lib.helpers.atomic_write import atomic_write_json
-from agent_core_lib.agent_core_lib.helpers.logging_utils import configure_logger
-from agent_core_lib.agent_core_lib.helpers.resume_prompt_utils import (
+from agent_core_lib.helpers.atomic_write import atomic_write_json
+from agent_core_lib.helpers.logging_utils import configure_logger
+from agent_core_lib.helpers.resume_prompt_utils import (
     build_inputs_from_session,
 )
-from agent_core_lib.agent_core_lib.helpers.text_utils import (
+from agent_core_lib.helpers.text_utils import (
     condensed_text,
     text_from_attr,
     text_from_mapping,

@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_core_lib.agent_core_lib.helpers.agent_prompt_utils import (
+from agent_core_lib.helpers.agent_prompt_utils import (
     prepend_chat_workspace_context,
     repository_scope_text,
     review_comment_code_snippet,
@@ -27,7 +27,7 @@ from agent_core_lib.agent_core_lib.helpers.agent_prompt_utils import (
     security_guardrails_text,
     workspace_scope_block,
 )
-from agent_core_lib.agent_core_lib.helpers.agents_instruction_utils import (
+from agent_core_lib.helpers.agents_instruction_utils import (
     repository_agents_instructions_text,
 )
 

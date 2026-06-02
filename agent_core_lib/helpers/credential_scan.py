@@ -44,7 +44,7 @@ def scan_text_for_credentials_and_phishing(
     ``'streaming Claude session for task PROJ-1'``). Blank ``text`` is a
     no-op.
     """
-    from agent_core_lib.agent_core_lib.helpers.credential_patterns import (
+    from agent_core_lib.helpers.credential_patterns import (
         find_credential_patterns,
         find_phishing_patterns,
         summarize_findings,
