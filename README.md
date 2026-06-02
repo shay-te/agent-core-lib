@@ -46,6 +46,9 @@ factory selects the backend from config.
   representation and a normalized result envelope across backends.
 - **Output-side safety scan** — detective credential/phishing scan over
   the agent's final response (logs redacted previews only).
+- **Credential pattern bank** — shared high-confidence credential and
+  operator-phishing detectors used by agent outputs and sandbox
+  workspace scans.
 - **Resume snapshots** — render a generic markdown snapshot so another
   agent can continue from recent conversation state.
 - **Backend factory** — pick the configured backend and expose it
