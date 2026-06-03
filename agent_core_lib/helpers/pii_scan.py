@@ -9,11 +9,11 @@ model provider, so the log line is an auditable record (rotate /
 respond), never a block.
 
 Pattern names + redacted previews are logged; the raw matched value is
-never logged. The patterns themselves are kept in
-:mod:`agent_core_lib.helpers.pii_patterns` and deliberately mirror
-:mod:`llm_core_lib.safety.pii_patterns` so the two libraries flag the
-same shapes without ``agent-core-lib`` needing to depend on
-``llm-core-lib``.
+never logged. The patterns themselves live in
+:mod:`agent_core_lib.helpers.pii_patterns` — the workspace's single
+source of truth (``llm-core-lib`` no longer carries a copy; its safety
+subpackage owns only the *structural* defenses — ``LLMView`` +
+``to_llm_payload`` — and leaves regex PII detection to this module).
 """
 
 from __future__ import annotations
@@ -51,8 +51,10 @@ def scan_text_for_pii(
             'PII PATTERN DETECTED in %s: %s. '
             'The agent text has already been transmitted; treat as an '
             'audit signal that the prevention layer (typed LLM views / '
-            'scrubbing) missed something. See llm-core-lib '
-            'llm_core_lib.safety for the structural defense.',
+            'scrubbing) missed something. The structural defense lives '
+            'in llm-core-lib (llm_core_lib.safety: LLMView + '
+            'to_llm_payload); regex-level scrubbing of structured '
+            'payloads lives in agent_core_lib.helpers.pii_scrub.',
             context_label,
             summarize_pii_findings(findings),
         )
