@@ -2,7 +2,7 @@ import os
 
 import setuptools
 
-# agent_core_lib_import
+import agent_core_lib
 
 from setuptools import find_namespace_packages, setup
 from pip._internal.network.session import PipSession
@@ -25,16 +25,14 @@ with open('README.md', 'r') as fh:
 
     setup(
         name='agent_core_lib',
-        # agent_core_lib_version
-        author='agent_full_name',
-        author_email='agent_email',
-        description='agent_description',
+        version=agent_core_lib.__version__,
+        author='shay tessler',
+        author_email='shay@shay-te.com',
+        description='agent base project',
         long_description=long_description,
         long_description_content_type='text/markdown',
-        url='agent_url',
+        url='',
         packages=packages,
-        license='agent_license',
-        # agent_classifiers
         install_requires=requirements,
         include_package_data=True,
         python_requires='>=3.7',
