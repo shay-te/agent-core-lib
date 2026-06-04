@@ -16,6 +16,20 @@ Inside this repo the rule applies to:
 
 Variable names: spell out what the value is. No `cfg`, `ws`, `bf`, `s`, `c`, `d`, `r` shorthand. `claude_config`, `workspace`, `bedrock_factory`, `service`, `collection`, `document` instead. See the matching rule in `library-core-lib/AGENTS.md` for the full list.
 
+## `requirements.txt` carries `pydantic>=2.0`
+
+`pydantic>=2.0` is this repo's direct runtime dependency. It exists
+because `agent_core_lib/safety/llm_view.py` ships the canonical
+Pydantic v2 `BaseModel` subclass with `ConfigDict(extra='forbid',
+frozen=True)` — the concrete LLM-view base every tool author should
+subclass. The transport-layer marker (the class the
+`llm_core_lib.safety.payload_gate` gate `isinstance`-checks against)
+is a plain Python class in `llm-core-lib`; the Pydantic-enforced
+allowlist contract is an *agent-layer* concern and lives here. The
+split keeps `llm-core-lib` a pure transport library (no Pydantic
+import) and respects its boundary test (`test_boundary.py`) that
+forbids `agent_core_lib` imports from that side.
+
 ## Test file organization — one TestCase per file, filename mirrors the class
 
 **Every new test file owns exactly one `unittest.TestCase` subclass, and the filename is the snake_case form of that class name.** This is a workspace-wide rule — see the "Test file organization" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rationale, the helper-module pattern, and the canonical examples.
