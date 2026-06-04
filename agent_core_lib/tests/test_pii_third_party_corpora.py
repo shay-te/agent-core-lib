@@ -1163,12 +1163,16 @@ class TestThirdPartyCorpora(unittest.TestCase):
         firings = [t for t in _PRESIDIO_ABA_KNOWN_MISSES_DASHED if _has(t, 'us_routing_number')]
         self.assertEqual(firings, [], f'us_routing_number now matching dashed: {firings}')
 
-    def test_presidio_aba_checksum_overmatch_locked(self):
-        # Closing this needs the ABA checksum validator
-        # (3×first + 7×second mod 10 == 0).
+    def test_presidio_aba_checksum_overmatch_now_rejected(self):
+        # The ABA checksum validator (``_aba_routing_checksum_valid``
+        # in pii_patterns) now runs after the regex match. Inputs
+        # Presidio rejects for failing the 3-7-1-weighted mod-10
+        # checksum are dropped here too — locked as the new behaviour.
         for text in _PRESIDIO_ABA_OVERMATCH_INPUT:
-            self.assertTrue(_has(text, 'us_routing_number'),
-                            f'ABA over-match no longer fires for {text!r}')
+            self.assertFalse(
+                _has(text, 'us_routing_number'),
+                f'ABA over-match unexpectedly accepted for {text!r}',
+            )
 
     # ---- scrubadub Twitter ----------------------------------------------
     def test_scrubadub_twitter_positives(self):

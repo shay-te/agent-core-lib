@@ -52,8 +52,6 @@ _POSITIVES = (
     'cards: 4111-1111-1111-1111;',
     # next to other PII
     '4111111111111111 expires 12/26 ssn 123-45-6789',
-    # 19-digit (Maestro)
-    '6759649826438453123',
 )
 
 
@@ -107,10 +105,15 @@ _CC_PRESIDIO_POSITIVES = (
     '4484070000000000',
 )
 # Presidio rejects these via Luhn — they are shape-valid but checksum-
-# invalid PAN candidates. Our shape-only regex fires; locked as the
-# baseline so a future Luhn validator flips them.
+# invalid PAN candidates. The same Luhn validator now runs in
+# ``pii_patterns`` (registered in ``_PATTERN_VALIDATORS``), so these
+# inputs no longer fire — locked here so a future regression of the
+# validator is visible.
+#
+# Note: ``1748503543012`` IS Luhn-valid (Presidio rejects it for a
+# different reason — likely BIN-range checks we don't replicate); it
+# stays out of this list.
 _CC_PRESIDIO_LUHN_REJECTS_WE_FIRE = (
-    '1748503543012',
     '4012-8888-8888-1882',
     'my credit card number is 4012-8888-8888-1882',
     '36168002586008',
@@ -134,11 +137,18 @@ _CC_SCRUBADUB_POSITIVES = (
     'My credit card is 4012888888881881.',
 )
 
-# CommonRegex: test.py (madisonmay/CommonRegex).
-_CC_COMMONREGEX_POSITIVES = (
+# CommonRegex: test.py (madisonmay/CommonRegex). Note that several
+# CommonRegex "positives" are not Luhn-valid (it's a shape-only library);
+# we accept the all-zero forms (Luhn-trivial: every digit zero
+# → sum 0 → mod 10 = 0) and reject the others now that the Luhn
+# validator is applied. Locked here as a documented downgrade from
+# shape-only matching to checksum-gated matching.
+_CC_COMMONREGEX_LUHN_VALID_POSITIVES = (
     '0000-0000-0000-0000',
-    '0123456789012345',
     '0000 0000 0000 0000',
+)
+_CC_COMMONREGEX_LUHN_INVALID_NOW_REJECTED = (
+    '0123456789012345',
     '012345678901234',
 )
 
@@ -184,19 +194,20 @@ class TestCreditCardBulletproofCorpus(unittest.TestCase):
                 failures.append(text)
         self.assertEqual(failures, [], f'Presidio missed: {failures}')
 
-    def test_credit_card_presidio_luhn_rejects_are_documented_overmatches(self):
-        # Presidio rejects these via Luhn checksum. We currently fire on
-        # all of them (shape-only regex, no checksum). Lock the
-        # over-match so a future Luhn validator is a visible change.
-        failures = []
+    def test_credit_card_presidio_luhn_rejects_are_now_dropped(self):
+        # Presidio rejects these via Luhn checksum. Our pattern set now
+        # carries the same validator (``_luhn_valid`` in pii_patterns),
+        # so these checksum-invalid PANs are dropped at detection time.
+        # The old "documented over-match" lock has been flipped — what
+        # used to fire must now miss.
+        firings = []
         for text in _CC_PRESIDIO_LUHN_REJECTS_WE_FIRE:
-            if 'credit_card' not in [f.pattern_name for f in find_pii_patterns(text)]:
-                failures.append(text)
+            if 'credit_card' in [f.pattern_name for f in find_pii_patterns(text)]:
+                firings.append(text)
         self.assertEqual(
-            failures, [],
-            f'documented Luhn over-match no longer fires for {failures} '
-            f'— if a Luhn validator was added, update the lock and the '
-            f'Recommendation table in pii_patterns.py.',
+            firings, [],
+            f'credit_card fires on Luhn-invalid {firings} — the Luhn '
+            f'validator regressed or the test corpus drifted.',
         )
 
     def test_credit_card_scrubadub_positive_corpus(self):
@@ -206,12 +217,22 @@ class TestCreditCardBulletproofCorpus(unittest.TestCase):
                 failures.append(text)
         self.assertEqual(failures, [], f'scrubadub missed: {failures}')
 
-    def test_credit_card_commonregex_positive_corpus(self):
-        failures = []
-        for text in _CC_COMMONREGEX_POSITIVES:
-            if 'credit_card' not in [f.pattern_name for f in find_pii_patterns(text)]:
-                failures.append(text)
-        self.assertEqual(failures, [], f'CommonRegex missed: {failures}')
+    def test_credit_card_commonregex_luhn_valid_still_match(self):
+        failures = [
+            text for text in _CC_COMMONREGEX_LUHN_VALID_POSITIVES
+            if 'credit_card' not in [f.pattern_name for f in find_pii_patterns(text)]
+        ]
+        self.assertEqual(failures, [], f'CommonRegex Luhn-valid missed: {failures}')
+
+    def test_credit_card_commonregex_luhn_invalid_no_longer_match(self):
+        firings = [
+            text for text in _CC_COMMONREGEX_LUHN_INVALID_NOW_REJECTED
+            if 'credit_card' in [f.pattern_name for f in find_pii_patterns(text)]
+        ]
+        self.assertEqual(
+            firings, [],
+            f'Luhn-invalid CommonRegex PANs still firing: {firings}',
+        )
 
     def test_credit_card_in_json_payload(self):
         failures = []

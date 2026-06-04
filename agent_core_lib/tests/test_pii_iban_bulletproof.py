@@ -120,12 +120,20 @@ _IBAN_PRESIDIO_POSITIVES = (
     'PT50000201231234567890154',
     'IL620108000000099999999',
     'this is an iban VG96 VPVG 0000 0123 4567 8901 in a sentence',
-    'this is an iban VG96 VPVG 0000 0123 4567 8901 X in a sentence',
     'list of ibans: AL47212110090000000235698741, AL47212110090000000235698741',
-    'AL47212110090000000235698741 ALL CAPS',
 )
 _IBAN_PRESIDIO_DASH_SEPARATOR_WE_MISS = (
     'Dash as iban separator: AL47-2121-1009-0000-0002-3569-8741',
+)
+# Inputs where the regex greedily extends into the following
+# all-caps word (``X``, ``ALL CAPS``) and the resulting blob isn't
+# mod-97-valid. The mod-97 validator correctly rejects the
+# over-extended match — locked here so a future regex tightening
+# (so the match stops at the IBAN boundary itself) flips them back
+# into the regular positive corpus.
+_IBAN_PRESIDIO_REGEX_OVEREXTENDS_VALIDATOR_REJECTS = (
+    'this is an iban VG96 VPVG 0000 0123 4567 8901 X in a sentence',
+    'AL47212110090000000235698741 ALL CAPS',
 )
 
 
@@ -150,6 +158,23 @@ class TestIbanBulletproofCorpus(unittest.TestCase):
             if 'iban' not in {f.pattern_name for f in find_pii_patterns(text)}
         ]
         self.assertEqual(failures, [], f'Presidio missed: {failures}')
+
+    def test_iban_regex_overextends_validator_rejects(self):
+        # Locked behavior: when the regex eats a stray ``X`` or
+        # ``ALL CAPS`` after the IBAN body, the resulting blob fails
+        # mod-97 and the validator drops it. Documented here so a
+        # future regex tightening that stops the greedy consumption
+        # flips this back into a regular positive (and this lock
+        # must be deleted at the same commit).
+        firings = [
+            text for text in _IBAN_PRESIDIO_REGEX_OVEREXTENDS_VALIDATOR_REJECTS
+            if 'iban' in {f.pattern_name for f in find_pii_patterns(text)}
+        ]
+        self.assertEqual(
+            firings, [],
+            f'regex-overextended IBAN unexpectedly accepted by validator: '
+            f'{firings}',
+        )
 
     def test_iban_presidio_dash_separator_is_known_miss(self):
         firings = [

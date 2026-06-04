@@ -503,6 +503,170 @@ class PIIPatternFinding(object):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Checksum validators — second-pass filters that reject shape-valid but
+# arithmetically-impossible matches.
+#
+# Closes the "Recommendation item 1" follow-up in the prior-art block
+# above: kill regex false positives at near-zero runtime cost by gating
+# each match on the standard checksum the issuer publishes. Pattern
+# names that appear in :data:`_PATTERN_VALIDATORS` are run through the
+# matching validator after the regex fires; matches that fail are
+# dropped from the finding list.
+#
+# Every validator is pure stdlib and short by design — the long-form
+# upstream rules live in Presidio / the issuer specs; what we capture
+# here is the minimum check that flips an over-match into a clean miss.
+# ---------------------------------------------------------------------------
+
+
+def _luhn_valid(match_text: str) -> bool:
+    """Luhn-checksum validator for credit-card-shaped strings.
+
+    Strips space and dash separators, then computes the standard
+    mod-10 check (double every second digit from the right, add the
+    digit sums, sum mod 10 == 0). The bare-shape regex fires on every
+    13-19 digit sequence; this filter drops the ones whose check
+    digit doesn't match what the issuer would have stamped.
+    """
+    digits = ''.join(ch for ch in match_text if ch.isdigit())
+    if not 13 <= len(digits) <= 19:
+        return False
+    total = 0
+    for index, char in enumerate(reversed(digits)):
+        digit_value = int(char)
+        if index % 2 == 1:
+            digit_value *= 2
+            if digit_value > 9:
+                digit_value -= 9
+        total += digit_value
+    return total % 10 == 0
+
+
+def _ssn_area_group_serial_valid(match_text: str) -> bool:
+    """Reject SSN area/group/serial values the SSA never issues.
+
+    Mirrors Presidio's ``UsSsnRecognizer`` reservation rules:
+      * area number ``000`` is never issued
+      * area number ``666`` is never issued
+      * area numbers ``900-999`` are reserved for the ITIN range
+      * group number ``00`` is never issued
+      * serial number ``0000`` is never issued
+    Lifts the shape-only regex up to a real SSN check at the cost of
+    one tuple unpack.
+    """
+    digits_only = match_text.replace('-', '')
+    if len(digits_only) != 9:
+        return False
+    area = digits_only[:3]
+    group = digits_only[3:5]
+    serial = digits_only[5:]
+    if area in ('000', '666'):
+        return False
+    if area[0] == '9':
+        return False
+    if group == '00':
+        return False
+    if serial == '0000':
+        return False
+    return True
+
+
+def _iban_mod97_valid(match_text: str) -> bool:
+    """Mod-97 checksum validator for IBANs (ISO 13616).
+
+    The published algorithm: move the four leading chars to the end,
+    map each letter to its A=10..Z=35 number, interpret the resulting
+    digit string as an integer, return ``integer % 97 == 1``. Catches
+    every transposition and check-digit error the regex shape alone
+    can't see.
+    """
+    compact = match_text.replace(' ', '').replace('-', '').upper()
+    if len(compact) < 15:
+        return False
+    rearranged = compact[4:] + compact[:4]
+    numeric_chars = []
+    for char in rearranged:
+        if char.isdigit():
+            numeric_chars.append(char)
+        elif 'A' <= char <= 'Z':
+            numeric_chars.append(str(ord(char) - 55))
+        else:
+            return False
+    return int(''.join(numeric_chars)) % 97 == 1
+
+
+def _aba_routing_checksum_valid(match_text: str) -> bool:
+    """ABA routing-number checksum (Federal Reserve published rule).
+
+    9-digit weighted sum: ``3,7,1,3,7,1,3,7,1`` × the digits, mod 10
+    must be 0. The bare 9-digit regex collides with phone fragments,
+    timestamps, and SSN-without-dashes; the checksum kills the vast
+    majority of those.
+    """
+    digits = ''.join(ch for ch in match_text if ch.isdigit())
+    if len(digits) != 9:
+        return False
+    weights = (3, 7, 1, 3, 7, 1, 3, 7, 1)
+    total = sum(int(digit) * weight for digit, weight in zip(digits, weights))
+    return total % 10 == 0
+
+
+_VIN_CHAR_VALUES = {
+    'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7, 'H': 8,
+    'J': 1, 'K': 2, 'L': 3, 'M': 4, 'N': 5,
+    'P': 7, 'R': 9,
+    'S': 2, 'T': 3, 'U': 4, 'V': 5, 'W': 6, 'X': 7, 'Y': 8, 'Z': 9,
+    **{str(digit): digit for digit in range(10)},
+}
+_VIN_POSITIONAL_WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+
+
+def _vin_check_digit_valid(match_text: str) -> bool:
+    """North-American VIN check-digit (NHTSA published rule, 49 CFR §565).
+
+    Position 9 is a check digit computed as ``Σ value(char) × weight``
+    mod 11. Result 10 is encoded as ``X``; anything else is a literal
+    digit. Drops the shape-valid VINs that aren't real VINs (about
+    10/11 of random 17-char strings that pass the shape regex).
+    """
+    candidate = match_text.upper()
+    if len(candidate) != 17:
+        return False
+    weighted_sum = 0
+    for position, char in enumerate(candidate):
+        if char not in _VIN_CHAR_VALUES:
+            return False
+        weighted_sum += _VIN_CHAR_VALUES[char] * _VIN_POSITIONAL_WEIGHTS[position]
+    check_remainder = weighted_sum % 11
+    expected_check_char = 'X' if check_remainder == 10 else str(check_remainder)
+    return candidate[8] == expected_check_char
+
+
+def _il_id_check_digit_valid(match_text: str) -> bool:
+    """Israeli teudat zehut check-digit validator.
+
+    9-digit number where the last digit is a Luhn-like checksum:
+    multiply each digit by 1, 2, 1, 2... left-to-right; if the
+    product is >= 10, sum its digits; the total mod 10 must be 0.
+    Padded shorter numbers (some legacy holders carry 7 or 8 digits)
+    are left-padded with zeros before the algorithm runs.
+    """
+    digits_only = ''.join(ch for ch in match_text if ch.isdigit())
+    if not 5 <= len(digits_only) <= 9:
+        return False
+    padded = digits_only.zfill(9)
+    total = 0
+    for index, char in enumerate(padded):
+        digit_value = int(char)
+        if index % 2 == 1:
+            digit_value *= 2
+            if digit_value > 9:
+                digit_value -= 9
+        total += digit_value
+    return total % 10 == 0
+
+
 _PII_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     # --- contact ------------------------------------------------------
     # URL — borrowed from scrubadub's ``UrlDetector`` (see prior-art note
@@ -541,6 +705,27 @@ _PII_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ('skype_handle', re.compile(
         r'\bskype[\s:]+[A-Za-z][A-Za-z0-9.\-_]{5,31}\b',
         re.IGNORECASE,
+    )),
+    # Instagram handle — keyword-anchored ``@name``. The ``@`` is
+    # required (a keyword alone with narrative text — e.g.
+    # ``instagram is great`` — is not a handle). Length cap 1-30
+    # matches Instagram's username spec. Declared after ``twitter_handle``
+    # so a keyword-less ``@name`` falls to the Twitter detector.
+    ('instagram_handle', re.compile(
+        r'\b(?:instagram|insta|ig)[\s:@]+@[A-Za-z0-9_.]{1,30}\b',
+        re.IGNORECASE,
+    )),
+    # Mastodon handle — ``@user@instance.example`` (two ``@`` signs,
+    # the second separating the local part from the federated host).
+    # The shape is distinct enough from email that the per-pattern
+    # collision resolver in ``pii_scrub`` keeps the right span; we
+    # still declare it AFTER ``email`` so a bare ``user@host`` is
+    # treated as email rather than partial Mastodon. The lookbehind
+    # set includes ``"`` and ``'`` so the handle still matches when
+    # the surrounding payload was JSON-serialized.
+    ('mastodon_handle', re.compile(
+        r'(?:^|(?<=[ \t\n\r(\[,;:"\']))'
+        r'@[A-Za-z0-9_]{1,30}@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'
     )),
 
     # --- US government IDs --------------------------------------------
@@ -773,6 +958,18 @@ _PII_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
         r'\bTC\s*(?:Kimlik(?:\s+No)?)?\s*[:#=]?\s*\d{11}\b',
         re.IGNORECASE,
     )),
+    # Israeli Teudat Zehut — 9 digits where the last is a Luhn-like
+    # check digit. The bare-9-digit shape collides with phone fragments
+    # and US passport numbers, so the validator (registered in
+    # ``_PATTERN_VALIDATORS``) is doing most of the work here. We also
+    # accept the dashed form ``123-456-789`` that some Israeli forms
+    # print, and the keyword-anchored form ``תז 123456789``.
+    ('il_id', re.compile(
+        r'\b(?:תז|teudat\s+zehut|israeli\s+id)\s*[:=]?\s*\d{9}\b'
+        r'|\b\d{9}\b'
+        r'|\b\d{3}-\d{3}-\d{3}\b',
+        re.IGNORECASE,
+    )),
 
     # --- financial ----------------------------------------------------
     # 13–19 digit card numbers, with optional space or dash separators.
@@ -982,6 +1179,20 @@ _PII_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
 PII_PATTERN_NAMES: frozenset = frozenset(name for name, _ in _PII_PATTERNS)
 
 
+# Per-pattern checksum / range validators. A pattern name that appears
+# here is gated: its regex match is only kept if the validator returns
+# True. Patterns not listed are shape-only (the regex is the whole
+# detector). Closes Recommendation item 1 in the prior-art block above.
+_PATTERN_VALIDATORS = {
+    'credit_card': _luhn_valid,
+    'ssn': _ssn_area_group_serial_valid,
+    'iban': _iban_mod97_valid,
+    'us_routing_number': _aba_routing_checksum_valid,
+    'vin': _vin_check_digit_valid,
+    'il_id': _il_id_check_digit_valid,
+}
+
+
 def _redact(matched_text: str) -> str:
     prefix_len = min(4, len(matched_text))
     return f'{matched_text[:prefix_len]}…[REDACTED, len={len(matched_text)}]'
@@ -999,10 +1210,14 @@ def find_pii_patterns(text: str) -> List[PIIPatternFinding]:
         return []
     findings: List[PIIPatternFinding] = []
     for pattern_name, regex in _PII_PATTERNS:
+        validator = _PATTERN_VALIDATORS.get(pattern_name)
         for match in regex.finditer(text):
+            matched_text = match.group(0)
+            if validator is not None and not validator(matched_text):
+                continue
             findings.append(PIIPatternFinding(
                 pattern_name=pattern_name,
-                redacted_preview=_redact(match.group(0)),
+                redacted_preview=_redact(matched_text),
             ))
     return findings
 
@@ -1030,3 +1245,16 @@ def iter_pattern_names_and_regexes() -> Iterable[Tuple[str, re.Pattern[str]]]:
     is the declaration order, which the scrubber relies on for
     deterministic output."""
     return _PII_PATTERNS
+
+
+def get_validator_for(pattern_name: str):
+    """Return the second-pass validator registered for ``pattern_name``,
+    or ``None`` if the pattern is shape-only.
+
+    The scrubber uses this to gate every regex match the same way
+    :func:`find_pii_patterns` does — without it, ``_scrub_string`` would
+    redact shape-valid-but-checksum-invalid numbers (e.g., a 13-digit
+    sequence that isn't a real credit card) and over-redact otherwise
+    safe text.
+    """
+    return _PATTERN_VALIDATORS.get(pattern_name)

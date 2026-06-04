@@ -289,11 +289,13 @@ class TestMissUnvalidatedPatterns(unittest.TestCase):
         findings = _names(find_pii_patterns('4242 4242 4242 4242'))
         self.assertIn('credit_card', findings)
 
-    def test_invalid_card_number_also_fires(self):
-        # 16 digits, definitely not a real Luhn-valid card. We still
-        # report ``credit_card`` because we never validate.
+    def test_invalid_card_number_no_longer_fires(self):
+        # 16 digits, definitely not a real Luhn-valid card. The Luhn
+        # validator in ``pii_patterns._PATTERN_VALIDATORS`` now drops
+        # it — locked as the new behaviour (used to report
+        # ``credit_card`` before the validator landed).
         findings = _names(find_pii_patterns('1234 5678 9012 3456'))
-        self.assertIn('credit_card', findings)
+        self.assertNotIn('credit_card', findings)
 
     def test_uuid_fires_as_bitcoin_address(self):
         # A v4 UUID's hex chunks can collide with bitcoin's
@@ -305,12 +307,12 @@ class TestMissUnvalidatedPatterns(unittest.TestCase):
         findings = _names(find_pii_patterns('addr 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'))
         self.assertIn('bitcoin_address', findings)
 
-    def test_random_alphanumeric_fires_as_vin(self):
-        # VIN regex matches any 17 alphanumerics (excluding I/O/Q).
-        # An order id / hash chunk / build id can collide. Lock the
-        # false-positive class so it's a known limitation.
+    def test_random_alphanumeric_no_longer_fires_as_vin(self):
+        # The VIN regex matches any 17 alphanumerics (excluding I/O/Q),
+        # but the check-digit validator now gates the shape — random
+        # alphanumeric strings fail the mod-11 check and are dropped.
         findings = _names(find_pii_patterns('build ABCDEFGHJKLMNPRST hash'))
-        self.assertIn('vin', findings)
+        self.assertNotIn('vin', findings)
 
     def test_random_5_digit_id_fires_as_us_zip(self):
         # Any 5-digit number trips ``us_zip``. Database row ids /

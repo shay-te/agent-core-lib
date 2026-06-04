@@ -19,7 +19,6 @@ from agent_core_lib.helpers.pii_scrub import find_pii_in_payload
 _POSITIVES = (
     '123-45-6789',
     '111-22-3333',
-    '987-65-4321',
     '001-01-0001',
     'SSN 123-45-6789 on file',
     'ssn: 123-45-6789',
@@ -29,6 +28,9 @@ _POSITIVES = (
     '123-45-6789;',
     'CC 4111 1111 1111 1111 SSN 123-45-6789',
     'employee 123-45-6789 filed taxes',
+    # Mixed string: ``987-65-4321`` is rejected by the validator (ITIN
+    # range), but ``123-45-6789`` still fires — one SSN match keeps the
+    # string in the positive corpus.
     'forms processed: 123-45-6789, 987-65-4321',
     'social 123-45-6789 entered today',
     'SSN=123-45-6789',
@@ -36,12 +38,18 @@ _POSITIVES = (
     '123-45-6789 was the reported number',
     # at end
     'reported number: 123-45-6789',
-    # multiple in one line
+    # multiple in one line — same partial-validity reasoning as above
     '123-45-6789 and 987-65-4321 cross-referenced',
     # inside parens with context
     'tax id (123-45-6789) verified',
     # mixed-case context
     'Ssn 123-45-6789 noted',
+)
+# Bare ``987-65-4321`` (area in the 900-999 ITIN reservation range)
+# previously fired as SSN; the validator now drops it. Locked here so
+# a future relaxation of the validator is a visible test failure.
+_VALIDATOR_REJECTS_ITIN_RANGE_BARE = (
+    '987-65-4321',
 )
 
 
@@ -217,18 +225,19 @@ class TestSsnBulletproofCorpus(unittest.TestCase):
         ]
         self.assertEqual(firings, [], f'never-issued now matching: {firings}')
 
-    def test_ssn_presidio_zero_serial_documented_overmatch(self):
-        # Serial '0000' is reserved by SSA but we fire on it. Closing
-        # this requires the area/group/serial validator (Recommendation
-        # item 1 in pii_patterns.py).
-        failures = [
+    def test_ssn_presidio_zero_serial_now_rejected(self):
+        # Serial ``0000`` is reserved by the SSA. With the
+        # area/group/serial validator landed in pii_patterns
+        # (``_ssn_area_group_serial_valid``), these reserved-shape
+        # strings no longer fire — the old over-match lock is flipped.
+        firings = [
             text for text in _SSN_PRESIDIO_NEGATIVE_WE_FIRE
-            if 'ssn' not in {f.pattern_name for f in find_pii_patterns(text)}
+            if 'ssn' in {f.pattern_name for f in find_pii_patterns(text)}
         ]
         self.assertEqual(
-            failures, [],
-            f'documented over-match no longer fires for {failures} — '
-            f'if reserved-serial validation was added, update the lock.',
+            firings, [],
+            f'ssn still fires on reserved-serial {firings} — the validator '
+            f'regressed or the test corpus drifted.',
         )
 
     def test_ssn_scrubadub_dashed_form_matches(self):
@@ -259,17 +268,34 @@ class TestSsnBulletproofCorpus(unittest.TestCase):
         ]
         self.assertEqual(firings, [], f'space-form now matching: {firings}')
 
-    def test_documented_overmatches_still_match_until_checksum_lands(self):
-        # Future-work canary: when a checksum/range validator is added
-        # (item 1 of "Recommendation" in ``pii_patterns.py``), these
-        # should STOP matching and this test must be deleted at the
-        # same commit.
-        failures = [
+    def test_bare_itin_range_ssn_no_longer_matches(self):
+        # Bare 9xx-area SSN-shaped strings are now rejected by the
+        # validator (area 900-999 = ITIN range, never a real SSN).
+        firings = [
+            text for text in _VALIDATOR_REJECTS_ITIN_RANGE_BARE
+            if 'ssn' in {f.pattern_name for f in find_pii_patterns(text)}
+        ]
+        self.assertEqual(
+            firings, [],
+            f'bare ITIN-range SSN still firing: {firings}',
+        )
+
+    def test_reserved_area_group_serial_no_longer_match(self):
+        # Previously a "documented over-match" canary. The
+        # area/group/serial validator (``_ssn_area_group_serial_valid``
+        # in pii_patterns) now rejects every reserved combination that
+        # the SSA never issues — locked here so a future relaxation
+        # of the validator is a visible test failure.
+        firings = [
             text for text in
             _DOCUMENTED_OVERMATCHES_OUR_REGEX_FIRES_PRESIDIO_REJECTS
-            if 'ssn' not in {f.pattern_name for f in find_pii_patterns(text)}
+            if 'ssn' in {f.pattern_name for f in find_pii_patterns(text)}
         ]
-        self.assertEqual(failures, [], f'over-match stopped firing: {failures}')
+        self.assertEqual(
+            firings, [],
+            f'reserved-area/group/serial still firing on {firings} — '
+            f'the validator regressed or the test corpus drifted.',
+        )
 
 
 if __name__ == '__main__':

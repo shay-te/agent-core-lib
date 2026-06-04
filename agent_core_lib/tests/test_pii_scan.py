@@ -37,8 +37,11 @@ _PATTERN_MODULE = 'agent_core_lib.helpers.pii_patterns'
 # so a single edit here propagates across the suite.
 _EXPECTED_PATTERN_NAMES = frozenset({
     # ---- contact (url / twitter_handle / skype_handle borrowed from
-    # ----          scrubadub — see prior-art note in pii_patterns.py)
+    # ----          scrubadub — see prior-art note in pii_patterns.py;
+    # ----          instagram_handle / mastodon_handle added in the
+    # ----          follow-up that landed the validator dispatch)
     'url', 'email', 'phone', 'twitter_handle', 'skype_handle',
+    'instagram_handle', 'mastodon_handle',
     # ---- US government IDs
     'ssn', 'itin', 'ein',
     'us_passport', 'us_drivers_license', 'medicare_mbi',
@@ -57,6 +60,9 @@ _EXPECTED_PATTERN_NAMES = frozenset({
     'in_gstin', 'it_fiscal_code', 'es_nie', 'se_personnummer',
     'in_voter', 'fi_personal_identity_code',
     'us_npi', 'au_abn', 'au_acn', 'sg_uen', 'th_tnin', 'tr_national_id',
+    # ---- Israeli teudat zehut — added in the validator-dispatch
+    # ---- follow-up; gated by ``_il_id_check_digit_valid``
+    'il_id',
     # ---- financial
     'credit_card', 'credit_card_cvv', 'iban', 'swift_bic',
     'us_routing_number', 'us_bank_account', 'bitcoin_address',
@@ -152,7 +158,10 @@ class FindPiiPatternsTests(unittest.TestCase):
         self.assertIn('mac_address', [f.pattern_name for f in findings])
 
     def test_vin_match(self):
-        findings = find_pii_patterns('VIN 1HGCM82633A123456 recorded')
+        # 1HGCM82633A004352 is shape-AND-check-digit valid (NHTSA-49 CFR §565
+        # mod-11 holds). The previous test value ``...A123456`` is shape-only
+        # and is correctly rejected by the new check-digit validator.
+        findings = find_pii_patterns('VIN 1HGCM82633A004352 recorded')
         self.assertIn('vin', [f.pattern_name for f in findings])
 
     def test_street_address_match(self):
@@ -537,6 +546,23 @@ class FindPiiPatternsTests(unittest.TestCase):
         # 11 digits, keyword-anchored on TC / TC Kimlik.
         findings = find_pii_patterns('TC Kimlik No: 10000000146')
         self.assertIn('tr_national_id', [f.pattern_name for f in findings])
+
+    def test_instagram_handle_match(self):
+        # Keyword-anchored on ``instagram`` / ``insta`` / ``ig``.
+        findings = find_pii_patterns('instagram @jane_doe shared a post')
+        self.assertIn('instagram_handle', [f.pattern_name for f in findings])
+
+    def test_mastodon_handle_match(self):
+        # Two-``@`` Mastodon federated handle.
+        findings = find_pii_patterns('reply from @jane@mastodon.social today')
+        self.assertIn('mastodon_handle', [f.pattern_name for f in findings])
+
+    def test_il_id_match(self):
+        # ``123456782`` is a Luhn-like-check-digit-valid teudat zehut.
+        # The keyword anchor (``תז`` / ``teudat zehut`` / ``israeli id``)
+        # disambiguates the shape from the bare-9-digit collision class.
+        findings = find_pii_patterns('teudat zehut 123456782 on file')
+        self.assertIn('il_id', [f.pattern_name for f in findings])
 
     # ---- coverage guarantee: every locked name has a positive test ----
 

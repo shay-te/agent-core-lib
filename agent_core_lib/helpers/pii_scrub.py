@@ -29,6 +29,7 @@ from typing import Any, List
 from agent_core_lib.helpers.pii_patterns import (
     PIIPatternFinding,
     find_pii_patterns,
+    get_validator_for,
     iter_pattern_names_and_regexes,
 )
 
@@ -101,7 +102,10 @@ def _scrub_string(text: str) -> str:
     """
     spans: list[tuple[int, int, str]] = []
     for pattern_name, regex in iter_pattern_names_and_regexes():
+        validator = get_validator_for(pattern_name)
         for match in regex.finditer(text):
+            if validator is not None and not validator(match.group(0)):
+                continue
             spans.append((match.start(), match.end(), pattern_name))
     if not spans:
         return text

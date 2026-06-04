@@ -112,6 +112,17 @@ class ScrubPiiTests(unittest.TestCase):
         scrub_pii(original)
         self.assertEqual(original, snapshot)
 
+    def test_validator_filters_apply_inside_scrubber(self):
+        # The scrubber must respect the same per-pattern validators
+        # that ``find_pii_patterns`` applies. A Luhn-INVALID PAN-shape
+        # number must NOT be redacted as ``credit_card``; a Luhn-VALID
+        # one (the canonical Visa test PAN) MUST be redacted.
+        scrubbed_invalid = scrub_pii('order id 1234567890123456 today')
+        self.assertNotIn('[redacted:credit_card]', scrubbed_invalid)
+        scrubbed_valid = scrub_pii('paid with 4111111111111111 yesterday')
+        self.assertIn('[redacted:credit_card]', scrubbed_valid)
+        self.assertNotIn('4111111111111111', scrubbed_valid)
+
     def test_url_with_embedded_email_redacts_to_url_only(self):
         # The url pattern is declared before email in pii_patterns so the
         # overlap resolver in _scrub_string keeps the longer URL span and
