@@ -112,6 +112,19 @@ class ScrubPiiTests(unittest.TestCase):
         scrub_pii(original)
         self.assertEqual(original, snapshot)
 
+    def test_url_with_embedded_email_redacts_to_url_only(self):
+        # The url pattern is declared before email in pii_patterns so the
+        # overlap resolver in _scrub_string keeps the longer URL span and
+        # drops the email span — the redacted output should carry the
+        # url marker and have no separate email marker for the embedded
+        # address. (Both patterns still fire at the find_pii layer; this
+        # is about the rebuild step.)
+        scrubbed = scrub_pii('see https://host/u/jane@example.com/profile here')
+        self.assertNotIn('jane@example.com', scrubbed)
+        self.assertIn('[redacted:url]', scrubbed)
+        # No separate [redacted:email] should appear inside the URL span.
+        self.assertEqual(scrubbed.count('[redacted:email]'), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

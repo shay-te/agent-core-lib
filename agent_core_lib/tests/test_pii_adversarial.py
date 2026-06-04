@@ -575,22 +575,20 @@ class TestKnownLimitationsCatalog(unittest.TestCase):
         # If a new pattern lands, this asserts the named set is the
         # one the adversarial tests above were written against. A
         # mismatch means new patterns need new adversarial coverage.
-        self.assertEqual(
-            PII_PATTERN_NAMES,
-            frozenset({
-                'email', 'phone',
-                'ssn', 'itin', 'ein',
-                'us_passport', 'us_drivers_license', 'medicare_mbi',
-                'uk_nino', 'uk_passport', 'ca_passport', 'au_passport',
-                'credit_card', 'credit_card_cvv', 'iban', 'swift_bic',
-                'us_routing_number', 'us_bank_account', 'bitcoin_address',
-                'us_zip', 'uk_postcode', 'ca_postcode',
-                'ipv4', 'ipv6', 'mac_address',
-                'vin', 'us_license_plate',
-                'street_address', 'po_box',
-                'date_of_birth',
-            }),
-        )
+        # (``url`` / ``twitter_handle`` / ``skype_handle`` / ``uk_utr``
+        # were borrowed from scrubadub — see the prior-art note in
+        # ``pii_patterns.py``. The adversarial cases that bracket them
+        # are documented inline: ``twitter_handle`` is exercised by
+        # ``test_miss_email_with_zero_width_split`` above, which
+        # confirms the positive-predecessor lookbehind rejects
+        # zero-width-split obscured emails as handle false-positives.)
+        # The canonical locked set lives in
+        # ``test_pii_scan._EXPECTED_PATTERN_NAMES`` — one place to
+        # edit when adding a pattern. The drift assert is a layered
+        # check: this file's adversarial corpus was written against
+        # whatever the canonical set contained at the time.
+        from agent_core_lib.tests.test_pii_scan import _EXPECTED_PATTERN_NAMES
+        self.assertEqual(PII_PATTERN_NAMES, _EXPECTED_PATTERN_NAMES)
 
 
 if __name__ == '__main__':

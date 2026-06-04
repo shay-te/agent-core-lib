@@ -15,3 +15,23 @@ Inside this repo the rule applies to:
 - **`agent_core_lib/helpers/result_utils.py`** — even the small `payload.get(ImplementationFields.SUCCESS, default)` site at the top of a function is fine; the rule kicks in the moment a second `.get(...)` joins the body.
 
 Variable names: spell out what the value is. No `cfg`, `ws`, `bf`, `s`, `c`, `d`, `r` shorthand. `claude_config`, `workspace`, `bedrock_factory`, `service`, `collection`, `document` instead. See the matching rule in `library-core-lib/AGENTS.md` for the full list.
+
+## Test file organization — one TestCase per file, filename mirrors the class
+
+**Every new test file owns exactly one `unittest.TestCase` subclass, and the filename is the snake_case form of that class name.** This is a workspace-wide rule — see the "Test file organization" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rationale, the helper-module pattern, and the canonical examples.
+
+Inside this repo: any new file under `agent_core_lib/tests/` follows the rule. Examples in workflow terms:
+- New tests for a single behaviour of `find_pii_patterns` → one file, one TestCase named for that behaviour.
+- Shared fakes / fixtures (a logger spy, a synthetic task, a config builder) go in a sibling `<topic>_helpers.py` module (no `test_` prefix so the test runner skips it).
+- Known multi-class outliers: `test_pii_scan.py` (3 TestCase classes, landed in this PR before the rule was formalized) and any pre-existing files like `test_credential_scan.py` (single-class, filename describes the module under test rather than mirroring the class name). Both should be split into one-TestCase-per-file the next time they're materially touched; until then they're documented exceptions, not endorsement.
+
+## Tests prefer real collaborators over mocks
+
+**Mock at infrastructure boundaries, not at internal seams.** Workspace-wide rule — see the "Tests prefer real collaborators over mocks" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rule, the "is this a useful test?" check, and the list of where mocks belong vs. where they don't.
+
+Canonical example for this repo: `agent_core_lib/tests/test_credential_scan.py` runs `scan_text_for_credentials_and_phishing` end-to-end against the real detector functions; only the **logger** is mocked so the test can assert on `logger.warning.call_args_list`. The detector regex / phishing detector / summary builder are all real — there's nothing to fake there because they're pure functions.
+
+For new tests under `agent_core_lib/tests/`:
+- The SUT's direct collaborators (`PiiScrubber`, `CredentialScanner`, the per-task helper functions in `helpers/`) are pure Python — wire the real types and pass real data through. `mock.Mock(spec=...)` of a pure-Python helper is a smell.
+- The legitimate mock surfaces here are the **logger**, the **filesystem when destructive** (use `tempfile`), and any **outbound subprocess / SDK call** (Claude CLI / Codex CLI / OpenHands worker — the existing `MockClaudeClient` etc. in this repo are the pattern). The logger mock is for assertion, not isolation; everything else is mocked because the boundary itself can't run in a unit test.
+- Pre-existing tests with `MagicMock()` collaborators are **not** required to be rewritten — apply the rule forward, with new tests and any time you're materially rewriting an old one.
