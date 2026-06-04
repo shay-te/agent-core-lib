@@ -60,9 +60,17 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 
 def _redact(match_text: str) -> str:
-    prefix_len = min(8, len(match_text))
-    prefix = match_text[:prefix_len]
-    return f'{prefix}…[REDACTED, total length={len(match_text)}]'
+    """Return a log-safe placeholder carrying ZERO bytes of the match.
+
+    Format: ``[REDACTED, total length=N]``. Credentials are even more
+    sensitive than PII — leaking 8 chars of an API key (``sk-proj-``,
+    ``sk_live_``, ``ghp_``) discloses the issuer + key class, and for
+    short tokens leaks a meaningful fraction of the secret. Operators
+    triage by pattern name + length; the preview itself must never
+    carry a recoverable byte. Mirrors :func:`redact_preview` in
+    :mod:`agent_core_lib.pii.pii_patterns`.
+    """
+    return f'[REDACTED, total length={len(match_text)}]'
 
 
 def find_credential_patterns(text: str) -> list[CredentialFinding]:

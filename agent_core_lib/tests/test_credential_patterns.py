@@ -98,6 +98,26 @@ class CredentialPatternRedactionTests(unittest.TestCase):
                 self.assertNotIn(fake, finding.redacted_preview)
                 self.assertIn('REDACTED', finding.redacted_preview)
 
+    def test_redacted_preview_leaks_zero_bytes_of_credential(self) -> None:
+        # The preview must carry NO part of the credential — leaking
+        # even 8 chars of an API key discloses the issuer + key class
+        # (``sk-proj-``, ``sk_live_``, ``ghp_``, ``AKIA``) and for
+        # short tokens leaks a meaningful fraction of the secret.
+        for fake in _FAKE.values():
+            findings = find_credential_patterns(fake)
+            for finding in findings:
+                preview = finding.redacted_preview
+                # Shape lock — only ``[REDACTED, total length=N]``.
+                self.assertRegex(preview, r'^\[REDACTED, total length=\d+\]$')
+                # No 4+-char alpha chunk of the credential appears.
+                for start in range(max(0, len(fake) - 4) + 1):
+                    chunk = fake[start:start + 4]
+                    if chunk.isalpha() and len(chunk) == 4:
+                        self.assertNotIn(
+                            chunk, preview,
+                            f'credential chunk {chunk!r} leaked into preview {preview!r}',
+                        )
+
     def test_summarize_findings_does_not_contain_full_value(self) -> None:
         joined = '\n'.join(_FAKE.values())
         findings = find_credential_patterns(joined)
