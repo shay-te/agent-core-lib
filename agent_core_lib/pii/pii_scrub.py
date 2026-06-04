@@ -24,13 +24,14 @@ the host app is about to hand to a model.
 from __future__ import annotations
 
 import json
-from typing import Any, List
+from typing import Any, List, Optional, Tuple
 
 from agent_core_lib.pii.pii_patterns import (
     PIIPatternFinding,
     find_pii_patterns,
     get_validator_for,
     iter_pattern_names_and_regexes,
+    redact_preview,
     replacement_for,
 )
 
@@ -80,7 +81,7 @@ def assert_no_pii(payload: Any) -> None:
     raise PIIDetectedError(f'PII detected in payload: {summary}')
 
 
-def _scrub_string(text: str) -> str:
+def _scrub_string(text: str, findings: Optional[List[PIIPatternFinding]] = None) -> str:
     """Single-pass PII scrubber for one string.
 
     Iteratively-applied ``regex.sub`` calls don't work here — even
@@ -128,6 +129,11 @@ def _scrub_string(text: str) -> str:
         out.append(text[cursor:start])
         out.append(replacement_for(pattern_name, matched_text))
         cursor = end
+        if findings is not None:
+            findings.append(PIIPatternFinding(
+                pattern_name=pattern_name,
+                redacted_preview=redact_preview(matched_text),
+            ))
     out.append(text[cursor:])
     return ''.join(out)
 
@@ -144,12 +150,34 @@ def scrub_pii(payload: Any) -> Any:
     The function is pure — it never mutates the input, it returns a new
     container at every level.
     """
+    return _walk_and_scrub(payload, findings=None)
+
+
+def scrub_pii_with_findings(
+    payload: Any,
+) -> Tuple[List[PIIPatternFinding], Any]:
+    """Single-pass scrub + report — returns ``(findings, scrubbed)``.
+
+    Equivalent to ``find_pii_in_payload(p)`` followed by ``scrub_pii(p)``
+    but walks the payload only once. Use this when the caller needs
+    both the cleaned payload AND a list of what was scrubbed (e.g., to
+    audit-log detections).
+    """
+    findings: List[PIIPatternFinding] = []
+    scrubbed = _walk_and_scrub(payload, findings=findings)
+    return findings, scrubbed
+
+
+def _walk_and_scrub(
+    payload: Any,
+    findings: Optional[List[PIIPatternFinding]],
+) -> Any:
     if isinstance(payload, str):
-        return _scrub_string(payload)
+        return _scrub_string(payload, findings)
     if isinstance(payload, dict):
-        return {key: scrub_pii(value) for key, value in payload.items()}
+        return {key: _walk_and_scrub(value, findings) for key, value in payload.items()}
     if isinstance(payload, list):
-        return [scrub_pii(value) for value in payload]
+        return [_walk_and_scrub(value, findings) for value in payload]
     if isinstance(payload, tuple):
-        return tuple(scrub_pii(value) for value in payload)
+        return tuple(_walk_and_scrub(value, findings) for value in payload)
     return payload

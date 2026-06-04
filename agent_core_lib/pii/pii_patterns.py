@@ -648,9 +648,17 @@ def replacement_for(pattern_name: str, matched_text: str) -> str:
     return strategy(matched_text)
 
 
-def _redact(matched_text: str) -> str:
+def redact_preview(matched_text: str) -> str:
+    """Return a log-safe preview of ``matched_text`` (4-char prefix + length).
+
+    Public so the scrubber can build :class:`PIIPatternFinding` records
+    without each module re-defining the same shape.
+    """
     prefix_len = min(4, len(matched_text))
     return f'{matched_text[:prefix_len]}…[REDACTED, len={len(matched_text)}]'
+
+
+_redact = redact_preview
 
 
 def find_pii_patterns(text: str) -> List[PIIPatternFinding]:

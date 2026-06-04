@@ -1,22 +1,23 @@
-"""Service facade for :mod:`agent_core_lib.pii` — one entry point.
+"""Service facade for :mod:`agent_core_lib.pii` — two entry points.
 
-The 95% use case is "I have a JSON payload about to leave the
-process; make sure no PII goes with it." That's what
-:meth:`PiiService.validate` does in one call:
+  * :meth:`PiiService.validate` — scan-only. Reports findings, audit-logs
+    them, optionally raises. Does NOT modify the payload. Use when the
+    payload itself is downstream-immutable (audit log, response text the
+    caller has already shipped).
 
-  * scans the payload with the regex pattern set
-  * scrubs every match in place
-  * returns a new, safe payload
+  * :meth:`PiiService.scrub` — scan + return a cleaned copy. Use on the
+    prevention path (any payload about to leave the process).
 
-Two optional knobs cover the rest:
+Both methods share the same knobs:
 
-  * ``strict=True``  — also runs ``phonenumbers`` + ``dateparser``
+  * ``strict=True`` — also runs ``phonenumbers`` + ``dateparser``
     (catches loose phones the regex misses and bare DOBs without a
     keyword anchor).
-  * ``raise_on_pii=True`` — raise instead of scrub. For tests / paranoid
-    flows where any PII is a contract violation, not a thing to clean up.
-  * ``audit_logger`` — when supplied, emits one WARNING per scan that
-    finds anything, with the pattern names + redacted previews.
+  * ``raise_on_pii=True`` — raise :class:`PIIDetectedError` on the
+    first detection instead of returning. For tests / hard-gate flows.
+  * ``audit_logger`` — destination for the WARNING line on any
+    detection. Defaults to a module-level logger so detections never
+    silently disappear.
 
 Callers needing the granular surface (single-pattern detection, NER,
 category lookups, replacement-mask strategies) import directly from
@@ -25,23 +26,29 @@ service is the easy one.
 """
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from agent_core_lib.pii.pii_patterns import (
     PIIPatternFinding,
-    find_pii_patterns,
-    find_pii_strict,
     summarize_pii_findings,
 )
 from agent_core_lib.pii.pii_scrub import (
     PIIDetectedError,
-    scrub_pii,
+    scrub_pii_with_findings,
 )
 
 
+# Default destination for detection warnings when the caller doesn't
+# pass an ``audit_logger``. Logging here (instead of going silent)
+# means a misconfigured caller still leaves an operator-visible trail
+# under the ``agent_core_lib.data_layers.service.pii_service`` logger.
+_DEFAULT_AUDIT_LOGGER = logging.getLogger(__name__)
+
+
 class PiiService(object):
-    """One-call PII validation for any JSON-shaped payload."""
+    """One-call PII scan / scrub for any JSON-shaped payload."""
 
     def validate(
         self,
@@ -51,77 +58,135 @@ class PiiService(object):
         raise_on_pii: bool = False,
         audit_logger: Optional[logging.Logger] = None,
         context: str = 'payload',
-    ) -> Any:
-        """Validate ``payload`` and return a scrubbed copy.
+    ) -> List[PIIPatternFinding]:
+        """Scan ``payload`` and report what was found — do NOT modify it.
 
         Walks the payload recursively (``dict`` / ``list`` / ``tuple`` /
-        ``str``), scans every string with the canonical PII pattern set,
-        and rewrites matches to ``[redacted:<pattern>]`` placeholders.
-        Non-text primitives (``int`` / ``bool`` / ``None`` / dates) pass
-        through unchanged. The input is never mutated.
+        ``str``) and matches every string against the canonical PII
+        pattern set. The payload itself is unchanged on the way back.
 
         Args:
             payload: any JSON-shaped value.
             strict: when ``True``, also runs the library-backed
                 detectors (``phonenumbers`` for stricter phone parsing,
                 ``dateparser`` for bare DOBs without a keyword anchor).
-                Costs the two dependencies at runtime.
             raise_on_pii: when ``True``, raise
-                :class:`PIIDetectedError` on the first detection instead
-                of scrubbing. Useful for tests / hard-gate flows.
-            audit_logger: when supplied, emits one ``WARNING`` line on
-                any detection with the pattern names + redacted
-                previews. The full matched value is never logged.
+                :class:`PIIDetectedError` on the first detection
+                instead of returning the findings list.
+            audit_logger: destination for the WARNING line emitted on
+                any detection (pattern names + redacted previews — the
+                raw matched value is never logged). Defaults to the
+                module logger so detections never disappear.
             context: short label woven into the audit log so operators
                 can locate the source (e.g. ``'admin_chat_response'``).
 
         Returns:
-            A new payload with every PII match replaced (when
-            ``raise_on_pii=False``). The output is safe to forward to
-            the LLM / a log / a downstream service.
+            The list of :class:`PIIPatternFinding` (empty when clean).
+            Callers that just want a boolean can use truthiness.
 
         Raises:
-            PIIDetectedError: when ``raise_on_pii=True`` and any pattern
-                fires. The error message names the matched patterns but
-                never echoes the raw matched value.
+            PIIDetectedError: when ``raise_on_pii=True`` and any
+                pattern fires.
         """
-        findings = self._scan(payload, strict=strict)
+        return self._scan_and_announce(
+            payload,
+            strict=strict,
+            raise_on_pii=raise_on_pii,
+            audit_logger=audit_logger,
+            context=context,
+        )[0]
+
+    def scrub(
+        self,
+        payload: Any,
+        *,
+        strict: bool = False,
+        raise_on_pii: bool = False,
+        audit_logger: Optional[logging.Logger] = None,
+        context: str = 'payload',
+    ) -> Any:
+        """Scan ``payload`` and return a scrubbed copy.
+
+        Same walker / pattern set as :meth:`validate`, but the returned
+        value has every PII match rewritten to ``[redacted:<pattern>]``
+        placeholders. Non-text primitives (``int`` / ``bool`` /
+        ``None`` / dates / Decimals / UUIDs) pass through unchanged.
+        The input object is never mutated.
+
+        Args / Raises: see :meth:`validate`.
+
+        Returns:
+            A new payload safe to forward to the LLM / a downstream
+            service. When nothing matched, the same object is returned
+            (no extra allocation).
+        """
+        findings, scrubbed = self._scan_and_announce(
+            payload,
+            strict=strict,
+            raise_on_pii=raise_on_pii,
+            audit_logger=audit_logger,
+            context=context,
+        )
+        return scrubbed
+
+    def _scan_and_announce(
+        self,
+        payload: Any,
+        *,
+        strict: bool,
+        raise_on_pii: bool,
+        audit_logger: Optional[logging.Logger],
+        context: str,
+    ):
+        """Shared core for :meth:`validate` and :meth:`scrub`.
+
+        Always builds the scrubbed copy (the cost is one walk regardless),
+        but the caller decides whether to expose it. Logging + raising is
+        identical on both paths so a switch from ``validate`` to ``scrub``
+        cannot change which detections an operator sees.
+        """
+        findings, scrubbed = scrub_pii_with_findings(payload)
+        if strict:
+            findings = findings + self._strict_only_findings(payload)
         if findings:
-            if audit_logger is not None:
-                audit_logger.warning(
-                    'PII detected in %s: %s',
-                    context,
-                    summarize_pii_findings(findings),
-                )
+            logger = audit_logger if audit_logger is not None else _DEFAULT_AUDIT_LOGGER
+            logger.warning(
+                'PII detected in %s: %s',
+                context,
+                summarize_pii_findings(findings),
+            )
             if raise_on_pii:
                 summary = ', '.join(
                     f'{finding.pattern_name}={finding.redacted_preview}'
                     for finding in findings
                 )
                 raise PIIDetectedError(f'PII detected in {context}: {summary}')
-        return scrub_pii(payload)
+        return findings, scrubbed
 
-    def _scan(self, payload: Any, *, strict: bool) -> list:
-        """Walk the payload and return every PII finding.
+    def _strict_only_findings(self, payload: Any) -> List[PIIPatternFinding]:
+        """Findings the regex pass cannot produce (``phonenumbers`` + ``dateparser``).
 
-        Internal helper — :meth:`validate` is the public surface.
-        Split out so the strict / non-strict branches stay readable.
+        Run only in ``strict=True`` mode; the regex set is already
+        covered by :func:`scrub_pii_with_findings`. Calling the strict
+        modules directly (instead of :func:`find_pii_strict`) avoids
+        the duplicate regex sweep.
         """
         if payload is None:
             return []
+        from agent_core_lib.pii._pii_strict_dob import find_strict_dob
+        from agent_core_lib.pii._pii_strict_phone import find_strict_phone
+
         text = self._payload_as_text(payload)
-        if strict:
-            return find_pii_strict(text)
-        return find_pii_patterns(text)
+        return list(find_strict_phone(text)) + list(find_strict_dob(text))
 
     @staticmethod
     def _payload_as_text(payload: Any) -> str:
-        """Coerce ``payload`` into the single string the scan sees.
+        """Coerce ``payload`` into the single string the strict scan sees.
 
         Strings pass through; everything else is JSON-serialized with
-        ``default=str`` so dates / Decimals / UUIDs don't crash the scan.
+        ``default=str`` so dates / Decimals / UUIDs don't crash the
+        scan.
         """
         if isinstance(payload, str):
             return payload
-        import json
         return json.dumps(payload, default=str, sort_keys=True)
