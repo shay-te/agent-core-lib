@@ -2,11 +2,11 @@
 
 This is the runtime backstop the admin-backend wires into its LLM
 tool-result boundary. Three entry points, all reading the workspace's
-single source of truth — :mod:`agent_core_lib.helpers.pii_patterns`:
+single source of truth — :mod:`agent_core_lib.pii.pii_patterns`:
 
 * :func:`find_pii_in_payload` — non-throwing scan over ``dict`` /
   ``list`` / ``tuple`` / ``str``; returns a list of
-  :class:`~agent_core_lib.helpers.pii_patterns.PIIPatternFinding` so
+  :class:`~agent_core_lib.pii.pii_patterns.PIIPatternFinding` so
   callers can log / count / inspect.
 * :func:`assert_no_pii` — raises :class:`PIIDetectedError` if anything
   matched. The test-suite hook for locking the contract that a given
@@ -17,7 +17,7 @@ single source of truth — :mod:`agent_core_lib.helpers.pii_patterns`:
   ``None`` / ``Decimal`` / ``date``) pass through untouched.
 
 The text-stream WARNING-log helper lives in
-:mod:`agent_core_lib.helpers.pii_scan`; this module is for *payloads*
+:mod:`agent_core_lib.pii.pii_scan`; this module is for *payloads*
 the host app is about to hand to a model.
 """
 
@@ -26,11 +26,12 @@ from __future__ import annotations
 import json
 from typing import Any, List
 
-from agent_core_lib.helpers.pii_patterns import (
+from agent_core_lib.pii.pii_patterns import (
     PIIPatternFinding,
     find_pii_patterns,
     get_validator_for,
     iter_pattern_names_and_regexes,
+    replacement_for,
 )
 
 
@@ -100,31 +101,32 @@ def _scrub_string(text: str) -> str:
     bogus finding. Don't change ``redacted`` to ``REDACTED`` without
     re-checking every pattern's case constraints.
     """
-    spans: list[tuple[int, int, str]] = []
+    spans: list[tuple[int, int, str, str]] = []
     for pattern_name, regex in iter_pattern_names_and_regexes():
         validator = get_validator_for(pattern_name)
         for match in regex.finditer(text):
-            if validator is not None and not validator(match.group(0)):
+            matched_text = match.group(0)
+            if validator is not None and not validator(matched_text):
                 continue
-            spans.append((match.start(), match.end(), pattern_name))
+            spans.append((match.start(), match.end(), pattern_name, matched_text))
     if not spans:
         return text
     # Sort by (start asc, length desc) so a longer span at the same start
     # wins over a shorter one. Then walk in order, dropping anything
     # that overlaps an already-accepted span.
     spans.sort(key=lambda span: (span[0], -(span[1] - span[0])))
-    accepted: list[tuple[int, int, str]] = []
+    accepted: list[tuple[int, int, str, str]] = []
     last_end = -1
-    for start, end, pattern_name in spans:
+    for start, end, pattern_name, matched_text in spans:
         if start < last_end:
             continue
-        accepted.append((start, end, pattern_name))
+        accepted.append((start, end, pattern_name, matched_text))
         last_end = end
     out: list[str] = []
     cursor = 0
-    for start, end, pattern_name in accepted:
+    for start, end, pattern_name, matched_text in accepted:
         out.append(text[cursor:start])
-        out.append(f'[redacted:{pattern_name}]')
+        out.append(replacement_for(pattern_name, matched_text))
         cursor = end
     out.append(text[cursor:])
     return ''.join(out)

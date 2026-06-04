@@ -20,15 +20,15 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from agent_core_lib.helpers.pii_patterns import (
+from agent_core_lib.pii.pii_patterns import (
     PII_PATTERN_NAMES,
     find_pii_patterns,
     summarize_pii_findings,
 )
-from agent_core_lib.helpers.pii_scan import scan_text_for_pii
+from agent_core_lib.pii.pii_scan import scan_text_for_pii
 
 
-_PATTERN_MODULE = 'agent_core_lib.helpers.pii_patterns'
+_PATTERN_MODULE = 'agent_core_lib.pii.pii_patterns'
 
 
 # The single locked-names contract for the workspace. Cross-file
@@ -60,16 +60,28 @@ _EXPECTED_PATTERN_NAMES = frozenset({
     'in_gstin', 'it_fiscal_code', 'es_nie', 'se_personnummer',
     'in_voter', 'fi_personal_identity_code',
     'us_npi', 'au_abn', 'au_acn', 'sg_uen', 'th_tnin', 'tr_national_id',
-    # ---- Israeli teudat zehut — added in the validator-dispatch
-    # ---- follow-up; gated by ``_il_id_check_digit_valid``
+    # ---- Israeli teudat zehut + expansion-batch government IDs
     'il_id',
+    'cn_resident_id', 'jp_my_number', 'kr_rrn', 'ru_inn',
+    'mx_curp', 'mx_rfc', 'ar_cuil_cuit', 'za_id', 'nz_ird', 'us_dea',
+    'medical_record_number',
     # ---- financial
     'credit_card', 'credit_card_cvv', 'iban', 'swift_bic',
     'us_routing_number', 'us_bank_account', 'bitcoin_address',
+    # ---- crypto wallets (financial)
+    'ethereum_address', 'monero_address', 'solana_address', 'litecoin_address',
+    # ---- bank (financial)
+    'in_ifsc', 'au_bsb', 'mx_clabe', 'jp_zengin',
     # ---- postal
     'us_zip', 'uk_postcode', 'ca_postcode', 'nl_postcode',
+    'de_postcode', 'fr_postcode', 'it_postcode', 'es_postcode',
+    'au_postcode', 'jp_postcode', 'br_cep', 'in_pincode',
+    'il_postcode', 'se_postcode', 'dk_postcode', 'no_postcode',
+    'fi_postcode', 'ch_postcode',
     # ---- network / device
     'ipv4', 'ipv6', 'mac_address',
+    'imei', 'imsi', 'iccid', 'android_id', 'ios_udid',
+    'uuid_v4', 'aws_instance_id',
     # ---- session / token
     'jwt',
     # ---- geolocation
@@ -81,6 +93,26 @@ _EXPECTED_PATTERN_NAMES = frozenset({
     'street_address', 'street_address_intl', 'po_box',
     # ---- temporal
     'date_of_birth',
+    # ---- additional social handles (contact)
+    'linkedin_url', 'github_url', 'discord_id', 'telegram_handle', 'tiktok_handle',
+    # ---- long-tail crypto wallets (financial)
+    'tron_address', 'cardano_address', 'polkadot_address',
+    'cosmos_address', 'ripple_address',
+    # ---- long-tail government IDs
+    'eg_national_id', 'pk_cnic', 'bd_nid', 'vn_national_id', 'id_ktp',
+    'ph_tin', 'sa_nin', 'ng_nin', 'ke_id', 'gh_ghana_card',
+    # ---- long-tail postcodes
+    'za_postcode', 'nz_postcode', 'ru_postcode', 'kr_postcode',
+    'th_postcode', 'tw_postcode', 'hk_postcode', 'sg_postcode',
+    # ---- long-tail social handles
+    'snapchat_handle', 'whatsapp_number', 'signal_handle',
+    'slack_user_id', 'bluesky_handle',
+    # ---- long-tail session / auth tokens (credential)
+    'oauth_bearer', 'php_session_id', 'jsession_id', 'csrf_token',
+    # ---- long-tail vehicle license plates
+    'uk_license_plate', 'eu_license_plate', 'ca_license_plate',
+    # ---- healthcare codes (government_id tier)
+    'clia', 'ndc_drug_code', 'icd10_code',
 })
 
 
@@ -563,6 +595,386 @@ class FindPiiPatternsTests(unittest.TestCase):
         # disambiguates the shape from the bare-9-digit collision class.
         findings = find_pii_patterns('teudat zehut 123456782 on file')
         self.assertIn('il_id', [f.pattern_name for f in findings])
+
+    # ---- expansion batch — every new pattern carries a positive test ----
+
+    def test_ethereum_address_match(self):
+        findings = find_pii_patterns(
+            'transfer to 0xDe0B295669a9FD93d5F28D9Ec85E40f4cb697BAe today'
+        )
+        self.assertIn('ethereum_address', [f.pattern_name for f in findings])
+
+    def test_monero_address_match(self):
+        # Real Monero donation address from the project's contributors
+        # page — 95 chars, starts with ``4``, base58 (no ``0OIl``).
+        findings = find_pii_patterns(
+            'wallet 44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A '
+            'on file'
+        )
+        self.assertIn('monero_address', [f.pattern_name for f in findings])
+
+    def test_solana_address_match(self):
+        findings = find_pii_patterns(
+            'solana 7EYnhQoR9YM3N7UoaKRoA44Uy8JeaZV3qyouov87awMs received funds'
+        )
+        self.assertIn('solana_address', [f.pattern_name for f in findings])
+
+    def test_litecoin_address_match(self):
+        findings = find_pii_patterns(
+            'paid LcHKeQrCBJUiUaXAYrAo7fzcRKQbX59u91 yesterday'
+        )
+        self.assertIn('litecoin_address', [f.pattern_name for f in findings])
+
+    def test_de_postcode_match(self):
+        findings = find_pii_patterns('PLZ: 10115 in Berlin')
+        self.assertIn('de_postcode', [f.pattern_name for f in findings])
+
+    def test_fr_postcode_match(self):
+        findings = find_pii_patterns('code postal 75001 in Paris')
+        self.assertIn('fr_postcode', [f.pattern_name for f in findings])
+
+    def test_it_postcode_match(self):
+        findings = find_pii_patterns('CAP 00100 Roma')
+        self.assertIn('it_postcode', [f.pattern_name for f in findings])
+
+    def test_es_postcode_match(self):
+        findings = find_pii_patterns('CP 28013 Madrid')
+        self.assertIn('es_postcode', [f.pattern_name for f in findings])
+
+    def test_au_postcode_match(self):
+        findings = find_pii_patterns('postcode 2000 Sydney')
+        self.assertIn('au_postcode', [f.pattern_name for f in findings])
+
+    def test_jp_postcode_match(self):
+        findings = find_pii_patterns('zip 100-0001 Tokyo')
+        self.assertIn('jp_postcode', [f.pattern_name for f in findings])
+
+    def test_br_cep_match(self):
+        findings = find_pii_patterns('CEP 01310-100 São Paulo')
+        self.assertIn('br_cep', [f.pattern_name for f in findings])
+
+    def test_in_pincode_match(self):
+        findings = find_pii_patterns('PIN code 110001 New Delhi')
+        self.assertIn('in_pincode', [f.pattern_name for f in findings])
+
+    def test_il_postcode_match(self):
+        findings = find_pii_patterns('postcode 6100000 Tel Aviv')
+        self.assertIn('il_postcode', [f.pattern_name for f in findings])
+
+    def test_se_postcode_match(self):
+        findings = find_pii_patterns('postnummer 11122 Stockholm')
+        self.assertIn('se_postcode', [f.pattern_name for f in findings])
+
+    def test_dk_postcode_match(self):
+        findings = find_pii_patterns('postnummer 1050 Copenhagen')
+        self.assertIn('dk_postcode', [f.pattern_name for f in findings])
+
+    def test_no_postcode_match(self):
+        findings = find_pii_patterns('postnummer 0150 Oslo')
+        self.assertIn('no_postcode', [f.pattern_name for f in findings])
+
+    def test_fi_postcode_match(self):
+        findings = find_pii_patterns('postinumero 00100 Helsinki')
+        self.assertIn('fi_postcode', [f.pattern_name for f in findings])
+
+    def test_ch_postcode_match(self):
+        findings = find_pii_patterns('PLZ 8001 Zürich')
+        self.assertIn('ch_postcode', [f.pattern_name for f in findings])
+
+    def test_cn_resident_id_match(self):
+        # ``110101199001010007`` is mod-11-check-digit valid.
+        findings = find_pii_patterns('身份证 110101199001010007 on file')
+        self.assertIn('cn_resident_id', [f.pattern_name for f in findings])
+
+    def test_jp_my_number_match(self):
+        # ``100000000005`` passes the JP My Number check digit.
+        findings = find_pii_patterns('my number: 100000000005 on file')
+        self.assertIn('jp_my_number', [f.pattern_name for f in findings])
+
+    def test_kr_rrn_match(self):
+        findings = find_pii_patterns('RRN 800101-1234567 verified')
+        self.assertIn('kr_rrn', [f.pattern_name for f in findings])
+
+    def test_ru_inn_match(self):
+        findings = find_pii_patterns('ИНН 7707083893 confirmed')
+        self.assertIn('ru_inn', [f.pattern_name for f in findings])
+
+    def test_mx_curp_match(self):
+        findings = find_pii_patterns('CURP HEGG560427MVZRRL04 issued')
+        self.assertIn('mx_curp', [f.pattern_name for f in findings])
+
+    def test_mx_rfc_match(self):
+        findings = find_pii_patterns('RFC HEGG560427CR2 on file')
+        self.assertIn('mx_rfc', [f.pattern_name for f in findings])
+
+    def test_ar_cuil_cuit_match(self):
+        findings = find_pii_patterns('CUIT 20-12345678-9 confirmed')
+        self.assertIn('ar_cuil_cuit', [f.pattern_name for f in findings])
+
+    def test_za_id_match(self):
+        # ``8001010000008`` is Luhn-valid.
+        findings = find_pii_patterns('SA ID: 8001010000008 verified')
+        self.assertIn('za_id', [f.pattern_name for f in findings])
+
+    def test_nz_ird_match(self):
+        findings = find_pii_patterns('IRD 123456789 issued')
+        self.assertIn('nz_ird', [f.pattern_name for f in findings])
+
+    def test_us_dea_match(self):
+        findings = find_pii_patterns('DEA AB1234567 confirmed')
+        self.assertIn('us_dea', [f.pattern_name for f in findings])
+
+    def test_imei_match(self):
+        # ``490154203237518`` is Luhn-valid.
+        findings = find_pii_patterns('IMEI 490154203237518 reported')
+        self.assertIn('imei', [f.pattern_name for f in findings])
+
+    def test_imsi_match(self):
+        findings = find_pii_patterns('IMSI 310150123456789 captured')
+        self.assertIn('imsi', [f.pattern_name for f in findings])
+
+    def test_iccid_match(self):
+        # 20-digit Luhn-valid ICCID.
+        findings = find_pii_patterns('ICCID 89014103211118510720 logged')
+        self.assertIn('iccid', [f.pattern_name for f in findings])
+
+    def test_android_id_match(self):
+        findings = find_pii_patterns('android id: abcdef1234567890')
+        self.assertIn('android_id', [f.pattern_name for f in findings])
+
+    def test_ios_udid_match(self):
+        findings = find_pii_patterns(
+            'UDID a1b2c3d4e5f6789012345678901234567890abcd verified'
+        )
+        self.assertIn('ios_udid', [f.pattern_name for f in findings])
+
+    def test_linkedin_url_match(self):
+        findings = find_pii_patterns(
+            'profile https://linkedin.com/in/jane-doe-12345 today'
+        )
+        self.assertIn('linkedin_url', [f.pattern_name for f in findings])
+
+    def test_github_url_match(self):
+        findings = find_pii_patterns('source https://github.com/octocat here')
+        self.assertIn('github_url', [f.pattern_name for f in findings])
+
+    def test_discord_id_match(self):
+        findings = find_pii_patterns('discord id 123456789012345678 pinged')
+        self.assertIn('discord_id', [f.pattern_name for f in findings])
+
+    def test_telegram_handle_match(self):
+        findings = find_pii_patterns('reach via t.me/jane_doe today')
+        self.assertIn('telegram_handle', [f.pattern_name for f in findings])
+
+    def test_tiktok_handle_match(self):
+        findings = find_pii_patterns('see https://tiktok.com/@user_name now')
+        self.assertIn('tiktok_handle', [f.pattern_name for f in findings])
+
+    def test_uuid_v4_match(self):
+        findings = find_pii_patterns(
+            'session 550e8400-e29b-41d4-a716-446655440000 active'
+        )
+        self.assertIn('uuid_v4', [f.pattern_name for f in findings])
+
+    def test_aws_instance_id_match(self):
+        # 17-char form (i- + 8 hex + 9 hex = 17 after the dash).
+        findings = find_pii_patterns('instance i-0abcd1234ef567890 running')
+        self.assertIn('aws_instance_id', [f.pattern_name for f in findings])
+
+    def test_in_ifsc_match(self):
+        findings = find_pii_patterns('IFSC SBIN0001234 routing verified')
+        self.assertIn('in_ifsc', [f.pattern_name for f in findings])
+
+    def test_au_bsb_match(self):
+        findings = find_pii_patterns('BSB 062-000 confirmed')
+        self.assertIn('au_bsb', [f.pattern_name for f in findings])
+
+    def test_mx_clabe_match(self):
+        # ``002194000000000037`` is CLABE-checksum valid.
+        findings = find_pii_patterns('CLABE 002194000000000037 active')
+        self.assertIn('mx_clabe', [f.pattern_name for f in findings])
+
+    def test_jp_zengin_match(self):
+        findings = find_pii_patterns('zengin 0001-001-1234567 logged')
+        self.assertIn('jp_zengin', [f.pattern_name for f in findings])
+
+    def test_medical_record_number_match(self):
+        findings = find_pii_patterns('MRN: ABC-123456 noted')
+        self.assertIn('medical_record_number', [f.pattern_name for f in findings])
+
+    # ---- long-tail batch (Group A) ----
+
+    def test_tron_address_match(self):
+        findings = find_pii_patterns(
+            'sent USDT to TLyqzVGLV1srkB7dToTAEqgDSfPtXRJZYH today'
+        )
+        self.assertIn('tron_address', [f.pattern_name for f in findings])
+
+    def test_cardano_address_match(self):
+        findings = find_pii_patterns(
+            'cardano wallet '
+            'addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj0vs2qd47s '
+            'received'
+        )
+        self.assertIn('cardano_address', [f.pattern_name for f in findings])
+
+    def test_polkadot_address_match(self):
+        findings = find_pii_patterns(
+            'dot 12xtAYsRUrmbniiWQqJtECiBQrMn8AypQcXhnQAc6RB6XkLW received'
+        )
+        self.assertIn('polkadot_address', [f.pattern_name for f in findings])
+
+    def test_cosmos_address_match(self):
+        findings = find_pii_patterns(
+            'send to cosmos1k0jntykt7e4g3y88ltc60czgjuqdy4c9ag7eas now'
+        )
+        self.assertIn('cosmos_address', [f.pattern_name for f in findings])
+
+    def test_ripple_address_match(self):
+        findings = find_pii_patterns(
+            'XRP rEb8TK3gBgk5auZkwc6sHnwrGVJH8DuaLh confirmed'
+        )
+        self.assertIn('ripple_address', [f.pattern_name for f in findings])
+
+    def test_eg_national_id_match(self):
+        findings = find_pii_patterns('national ID 29001011234567 verified')
+        self.assertIn('eg_national_id', [f.pattern_name for f in findings])
+
+    def test_pk_cnic_match(self):
+        findings = find_pii_patterns('CNIC 12345-1234567-1 on file')
+        self.assertIn('pk_cnic', [f.pattern_name for f in findings])
+
+    def test_bd_nid_match(self):
+        findings = find_pii_patterns('NID 1234567890123 verified')
+        self.assertIn('bd_nid', [f.pattern_name for f in findings])
+
+    def test_vn_national_id_match(self):
+        findings = find_pii_patterns('CCCD 012345678901 confirmed')
+        self.assertIn('vn_national_id', [f.pattern_name for f in findings])
+
+    def test_id_ktp_match(self):
+        findings = find_pii_patterns('KTP 3201234567890123 issued')
+        self.assertIn('id_ktp', [f.pattern_name for f in findings])
+
+    def test_ph_tin_match(self):
+        findings = find_pii_patterns('TIN 123-456-789-000 on file')
+        self.assertIn('ph_tin', [f.pattern_name for f in findings])
+
+    def test_sa_nin_match(self):
+        findings = find_pii_patterns('NIN 1234567890 verified')
+        self.assertIn('sa_nin', [f.pattern_name for f in findings])
+
+    def test_ng_nin_match(self):
+        findings = find_pii_patterns('NIN 12345678901 confirmed')
+        self.assertIn('ng_nin', [f.pattern_name for f in findings])
+
+    def test_ke_id_match(self):
+        findings = find_pii_patterns('Kenya ID 12345678 verified')
+        self.assertIn('ke_id', [f.pattern_name for f in findings])
+
+    def test_gh_ghana_card_match(self):
+        findings = find_pii_patterns('GHA-123456789-0 confirmed')
+        self.assertIn('gh_ghana_card', [f.pattern_name for f in findings])
+
+    def test_za_postcode_match(self):
+        findings = find_pii_patterns('postcode 0001 Pretoria')
+        self.assertIn('za_postcode', [f.pattern_name for f in findings])
+
+    def test_nz_postcode_match(self):
+        findings = find_pii_patterns('NZ postcode 6011 Wellington')
+        self.assertIn('nz_postcode', [f.pattern_name for f in findings])
+
+    def test_ru_postcode_match(self):
+        findings = find_pii_patterns('индекс 101000 Moscow')
+        self.assertIn('ru_postcode', [f.pattern_name for f in findings])
+
+    def test_kr_postcode_match(self):
+        findings = find_pii_patterns('우편번호 04524 Seoul')
+        self.assertIn('kr_postcode', [f.pattern_name for f in findings])
+
+    def test_th_postcode_match(self):
+        findings = find_pii_patterns('postcode 10200 Bangkok')
+        self.assertIn('th_postcode', [f.pattern_name for f in findings])
+
+    def test_tw_postcode_match(self):
+        findings = find_pii_patterns('TW-100 Taipei')
+        self.assertIn('tw_postcode', [f.pattern_name for f in findings])
+
+    def test_hk_postcode_match(self):
+        findings = find_pii_patterns('HK postcode 999077 international')
+        self.assertIn('hk_postcode', [f.pattern_name for f in findings])
+
+    def test_sg_postcode_match(self):
+        findings = find_pii_patterns('Singapore postcode 018989 confirmed')
+        self.assertIn('sg_postcode', [f.pattern_name for f in findings])
+
+    def test_snapchat_handle_match(self):
+        findings = find_pii_patterns('snapchat @jane_doe pinged')
+        self.assertIn('snapchat_handle', [f.pattern_name for f in findings])
+
+    def test_whatsapp_number_match(self):
+        findings = find_pii_patterns('reach https://wa.me/+12125551234 today')
+        self.assertIn('whatsapp_number', [f.pattern_name for f in findings])
+
+    def test_signal_handle_match(self):
+        findings = find_pii_patterns('signal +12125551234 active')
+        self.assertIn('signal_handle', [f.pattern_name for f in findings])
+
+    def test_slack_user_id_match(self):
+        findings = find_pii_patterns('mention <@U01ABCDEFGH> in the thread')
+        self.assertIn('slack_user_id', [f.pattern_name for f in findings])
+
+    def test_bluesky_handle_match(self):
+        findings = find_pii_patterns('@jane-doe.bsky.social posted')
+        self.assertIn('bluesky_handle', [f.pattern_name for f in findings])
+
+    def test_oauth_bearer_match(self):
+        findings = find_pii_patterns(
+            'Authorization: Bearer abc123def456ghi789 ok'
+        )
+        self.assertIn('oauth_bearer', [f.pattern_name for f in findings])
+
+    def test_php_session_id_match(self):
+        findings = find_pii_patterns(
+            'cookie PHPSESSID=abcdef1234567890abcdef set'
+        )
+        self.assertIn('php_session_id', [f.pattern_name for f in findings])
+
+    def test_jsession_id_match(self):
+        findings = find_pii_patterns(
+            'Cookie: JSESSIONID=ABCDEF1234567890 received'
+        )
+        self.assertIn('jsession_id', [f.pattern_name for f in findings])
+
+    def test_csrf_token_match(self):
+        findings = find_pii_patterns(
+            'X-CSRF-TOKEN: abc123def456ghi789jkl0mno verified'
+        )
+        self.assertIn('csrf_token', [f.pattern_name for f in findings])
+
+    def test_uk_license_plate_match(self):
+        findings = find_pii_patterns('UK plate AB12 CDE today')
+        self.assertIn('uk_license_plate', [f.pattern_name for f in findings])
+
+    def test_eu_license_plate_match(self):
+        findings = find_pii_patterns('EU plate ABC-1234-DE verified')
+        self.assertIn('eu_license_plate', [f.pattern_name for f in findings])
+
+    def test_ca_license_plate_match(self):
+        findings = find_pii_patterns('Canadian plate ABCD 1234 registered')
+        self.assertIn('ca_license_plate', [f.pattern_name for f in findings])
+
+    def test_clia_match(self):
+        findings = find_pii_patterns('CLIA 12D1234567 on file')
+        self.assertIn('clia', [f.pattern_name for f in findings])
+
+    def test_ndc_drug_code_match(self):
+        findings = find_pii_patterns('NDC 12345-678-90 prescribed')
+        self.assertIn('ndc_drug_code', [f.pattern_name for f in findings])
+
+    def test_icd10_code_match(self):
+        findings = find_pii_patterns('diagnosis ICD-10 A01.0 confirmed')
+        self.assertIn('icd10_code', [f.pattern_name for f in findings])
 
     # ---- coverage guarantee: every locked name has a positive test ----
 

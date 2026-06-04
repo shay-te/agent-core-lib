@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.helpers.pii_patterns import (
+from agent_core_lib.pii.pii_patterns import (
     PII_PATTERN_NAMES,
     find_pii_patterns,
 )

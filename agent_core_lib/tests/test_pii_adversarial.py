@@ -1,7 +1,7 @@
 """Adversarial inputs for the PII scanner / scrubber.
 
 This suite is a registry of inputs designed to **defeat** the hand-rolled
-regex pattern set in :mod:`agent_core_lib.helpers.pii_patterns`. Every
+regex pattern set in :mod:`agent_core_lib.pii.pii_patterns`. Every
 test is intentional — either:
 
 * A **MISS** test locks the current limitation. The docstring explains
@@ -25,12 +25,12 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.helpers.pii_patterns import (
+from agent_core_lib.pii.pii_patterns import (
     PII_PATTERN_NAMES,
     find_pii_patterns,
     summarize_pii_findings,
 )
-from agent_core_lib.helpers.pii_scrub import (
+from agent_core_lib.pii.pii_scrub import (
     PIIDetectedError,
     assert_no_pii,
     find_pii_in_payload,
@@ -320,9 +320,14 @@ class TestMissUnvalidatedPatterns(unittest.TestCase):
         findings = _names(find_pii_patterns('order 54321 shipped'))
         self.assertIn('us_zip', findings)
 
-    def test_random_8_digit_id_fires_as_us_drivers_license(self):
+    def test_random_8_digit_id_no_longer_fires_as_us_drivers_license(self):
+        # The previous broad ``\b\d{8}\b`` arm collided with every
+        # 8-digit order id. The keyword-anchored per-state union
+        # (scrubadub-borrowed) now requires a ``DL`` / ``drivers
+        # license`` / ``license #`` keyword nearby — random ids no
+        # longer fire. Locked as the new behaviour.
         findings = _names(find_pii_patterns('id 12345678 active'))
-        self.assertIn('us_drivers_license', findings)
+        self.assertNotIn('us_drivers_license', findings)
 
 
 # ===========================================================================
@@ -434,8 +439,10 @@ class TestScrubberFlows(unittest.TestCase):
         # observable outcome.
         text = '+1-jane@example.com'
         scrubbed = scrub_pii(text)
-        # email is the dominant match (and what a reader expects).
-        self.assertIn('[redacted:email]', scrubbed)
+        # Email is the dominant match (and what a reader expects).
+        # The per-pattern strategy preserves the host without the
+        # ``@`` so the replacement doesn't re-match the email regex.
+        self.assertIn('redacted:email', scrubbed)
         # The phone-like prefix is consumed by the email span.
         self.assertNotIn('@', scrubbed)
 

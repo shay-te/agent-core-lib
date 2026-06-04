@@ -1,30 +1,11 @@
-"""LLM-view concrete base — Pydantic v2.
+"""Pydantic v2 concrete LLMView. Subclass this in tool-result types.
 
-This is the class **tool authors actually subclass**. It carries the
-:class:`pydantic.BaseModel` machinery + the
-``ConfigDict(extra='forbid', frozen=True)`` enforcement that makes
-the declared field list a real allowlist.
-
-Two-layer structure (why):
-
-* :class:`llm_core_lib.safety.llm_view.LLMView` (plain Python marker
-  class, no Pydantic dep) is what
-  :func:`llm_core_lib.safety.payload_gate.to_llm_payload`
-  ``isinstance``-checks against. It lives in the transport layer so
-  the gate has a name to assert against without
-  :mod:`llm_core_lib` having to depend on :mod:`agent_core_lib` (the
-  existing ``test_boundary.py`` rule forbids that direction).
-* :class:`agent_core_lib.safety.llm_view.LLMView` — *this class* —
-  inherits from both the transport marker and Pydantic's
-  ``BaseModel``, so it satisfies ``isinstance(view, LLMView)`` for
-  the gate AND carries the Pydantic ``ConfigDict`` enforcement.
-  ``model_dump`` is provided by Pydantic; the transport marker's
-  documented contract method is named to match (no wrapper needed).
-
-The Pydantic dependency lives in this repo's ``requirements.txt``
-(not in ``llm-core-lib``'s) because the data-shape contract for tool
-returns is an agent-layer concern, not a transport-layer one. See
-the architecture note in ``architecture.md``.
+Inherits from both the transport marker
+:class:`llm_core_lib.safety.llm_view.LLMView` (so the gate's
+``isinstance`` check passes) and Pydantic's ``BaseModel`` (so
+``ConfigDict(extra='forbid', frozen=True)`` enforces the allowlist).
+Pydantic is this repo's dep; ``llm-core-lib`` stays Pydantic-free
+behind the marker.
 """
 from __future__ import annotations
 
@@ -36,69 +17,38 @@ from llm_core_lib.safety.llm_view import LLMView as _TransportLLMView
 
 
 class LLMView(_TransportLLMView, BaseModel):
-    """Concrete LLM-view base. Subclass this in tool-result types.
+    """Concrete LLM-view base.
 
-    Concrete subclasses declare every field the LLM is permitted to
-    see — anything not on the field list is rejected at construction
-    by Pydantic's ``extra='forbid'`` rule. Example:
-
-    .. code-block:: python
+    Example::
 
         class UserLLMView(LLMView):
             id: str
             display_name: str
 
-        # Raises pydantic.ValidationError — `email` isn't on the allowlist.
+        # Raises pydantic.ValidationError — ``email`` is not on the allowlist.
         UserLLMView(id='u1', display_name='Jane', email='jane@example.com')
-
-    Two flags together give the safety layer the guarantees it needs:
-
-    * ``extra='forbid'`` — construction with an unknown field raises
-      :class:`pydantic.ValidationError`; the declared field list IS
-      the complete allowlist of what the LLM will see.
-    * ``frozen=True`` — post-init assignment is rejected, so nothing
-      downstream can splice a raw email / address onto an
-      already-built view.
     """
 
     model_config = ConfigDict(extra='forbid', frozen=True)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Thin alias of ``model_dump()`` — preserved for call sites
-        that prefer the name. The choke point reaches for
-        ``model_dump`` directly (that's the abstract-method name on
-        the transport ABC); this exists for ergonomics.
-        """
+        """Alias of ``model_dump()`` for call sites that prefer the name."""
         return self.model_dump()
 
     @classmethod
     def allowed_field_names(cls) -> frozenset:
-        """Return the set of field names this view will expose to the LLM.
-
-        Used by ``test_*_view_fields_are_locked`` style tests so a
-        reviewer can codify the allowlist and the test fails the
-        moment someone widens it without updating the test.
-        """
+        """Return the field names this view exposes to the LLM."""
         return frozenset(cls.model_fields.keys())
 
     @classmethod
     def project(cls, data):
-        """Build an instance from a dict by filtering to the declared allowlist.
+        """Build an instance from a dict / attribute-shaped object by
+        filtering to the declared allowlist.
 
-        The reverse of ``model_dump`` — given a raw upstream dict (an
-        ORM row that's been ``ResultToDict``'d, an Elasticsearch hit,
-        an arbitrary service return) drop every key that isn't on
-        this view's declared field list, then construct the view
-        from what's left. This is the idiomatic adapter when
-        migrating an existing tool: instead of refactoring the
-        upstream service to return a view, the tool's last line
-        projects what it already has.
-
-        ``None`` data returns ``None`` so callers don't have to add
-        a guard at every call site. Non-mapping inputs that look
-        attribute-shaped (``getattr`` returns a value for the field
-        names) are also supported — that lets ORM rows / SimpleNamespace
-        objects flow through the same gate without a manual dict-cast.
+        The idiomatic adapter when migrating an existing tool: instead
+        of refactoring the upstream service to return a view, the
+        tool's last line projects whatever it already has. Returns
+        ``None`` for ``None`` input so callers don't need a guard.
         """
         if data is None:
             return None
@@ -115,14 +65,11 @@ class LLMView(_TransportLLMView, BaseModel):
 
     @classmethod
     def project_list(cls, items):
-        """Project a list / tuple / iterable of dicts into a list of views.
+        """Project an iterable of dicts into a list of views.
 
-        ``None`` or empty inputs return ``[]`` so the caller can pass
-        the gate output straight through without a None-guard.
-        Anything that isn't iterable falls through to a single-item
-        projection — that absorbs the common case where an upstream
-        service returns either a list or a single dict depending on
-        count.
+        ``None`` / empty inputs return ``[]``. A non-list input
+        (single dict / attribute-shaped object) is promoted to a
+        one-element list.
         """
         if items is None:
             return []

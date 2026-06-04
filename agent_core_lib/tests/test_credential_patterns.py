@@ -27,6 +27,7 @@ _FAKE = {
     'stripe_live_publishable_key': 'pk_live_' + 'E' * 24,
     'pem_private_key_block': '-----BEGIN RSA PRIVATE KEY-----',
     'openssh_private_key_body': 'OPENSSH PRIVATE KEY',
+    'credential_pair': 'username: admin password: hunter2',
 }
 
 

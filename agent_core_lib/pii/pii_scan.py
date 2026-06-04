@@ -10,7 +10,7 @@ respond), never a block.
 
 Pattern names + redacted previews are logged; the raw matched value is
 never logged. The patterns themselves live in
-:mod:`agent_core_lib.helpers.pii_patterns` — the workspace's single
+:mod:`agent_core_lib.pii.pii_patterns` — the workspace's single
 source of truth (``llm-core-lib`` no longer carries a copy; its safety
 subpackage owns only the *structural* defenses — ``LLMView`` +
 ``to_llm_payload`` — and leaves regex PII detection to this module).
@@ -38,7 +38,7 @@ def scan_text_for_pii(
     (typed views with allowlisted fields, scrubbing before string
     interpolation).
     """
-    from agent_core_lib.helpers.pii_patterns import (
+    from agent_core_lib.pii.pii_patterns import (
         find_pii_patterns,
         summarize_pii_findings,
     )
@@ -54,7 +54,7 @@ def scan_text_for_pii(
             'scrubbing) missed something. The structural defense lives '
             'in llm-core-lib (llm_core_lib.safety: LLMView + '
             'to_llm_payload); regex-level scrubbing of structured '
-            'payloads lives in agent_core_lib.helpers.pii_scrub.',
+            'payloads lives in agent_core_lib.pii.pii_scrub.',
             context_label,
             summarize_pii_findings(findings),
         )

@@ -36,6 +36,26 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ('stripe_live_publishable_key', re.compile(r'\bpk_live_[A-Za-z0-9]{24,}\b')),
     ('pem_private_key_block', re.compile(r'-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----')),
     ('openssh_private_key_body', re.compile(r'\bOPENSSH PRIVATE KEY\b')),
+    # Username + password pair on adjacent lines / fields. Borrowed
+    # from scrubadub's ``CredentialDetector``. The shape catches
+    # config-style leaks (``user: admin\npass: hunter2``), JSON
+    # blobs (``"username":"a","password":"b"``), and YAML / form
+    # bodies (``username=foo&password=bar``). The actual value of
+    # ``hunter2`` isn't extracted — the finding records that a
+    # credential pair was emitted, which is enough for the audit
+    # WARNING to fire.
+    ('credential_pair', re.compile(
+        # ``["']*`` between keyword and separator covers the JSON-key
+        # case: ``"username":"admin"`` parses as
+        # ``username`` ``"`` `` `` ``:`` `` `` ``"admin"``.
+        r'\b(?:user(?:name)?|login)["\']*\s*[:=]\s*["\']?[^\s,;}"\'&]{1,64}["\']?'
+        # Separator between value and the password key — covers spaces,
+        # commas, semicolons, closing braces, quotes (JSON), and ``&``
+        # (URL query strings), in any combination up to 8 chars.
+        r'[\s,;}"\'&]{1,8}'
+        r'(?:pass(?:word|wd)?|pwd|secret)["\']*\s*[:=]\s*["\']?[^\s,;}"\'&]{1,128}',
+        re.IGNORECASE,
+    )),
 )
 
 

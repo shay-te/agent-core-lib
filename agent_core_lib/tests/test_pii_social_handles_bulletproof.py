@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.helpers.pii_patterns import find_pii_patterns
-from agent_core_lib.helpers.pii_scrub import find_pii_in_payload
+from agent_core_lib.pii.pii_patterns import find_pii_patterns
+from agent_core_lib.pii.pii_scrub import find_pii_in_payload
 
 
 # --- Instagram handle ------------------------------------------------------

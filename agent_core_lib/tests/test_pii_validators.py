@@ -19,13 +19,19 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.helpers.pii_patterns import (
+from agent_core_lib.pii.pii_patterns import (
     _aba_routing_checksum_valid,
+    _cn_resident_id_check_valid,
     _iban_mod97_valid,
+    _iccid_luhn_valid,
     _il_id_check_digit_valid,
+    _imei_luhn_valid,
+    _jp_my_number_check_valid,
     _luhn_valid,
+    _mx_clabe_check_valid,
     _ssn_area_group_serial_valid,
     _vin_check_digit_valid,
+    _za_id_luhn_valid,
 )
 
 
@@ -250,6 +256,78 @@ class TestIlIdCheckDigitValidator(unittest.TestCase):
         # left-pads with zeros before running the algorithm. ``18``
         # padded to ``000000018`` is valid.
         self.assertTrue(_il_id_check_digit_valid('18'.zfill(9)))
+
+
+class TestCnResidentIdValidator(unittest.TestCase):
+    def test_valid_id(self):
+        self.assertTrue(_cn_resident_id_check_valid('110101199001010007'))
+
+    def test_invalid_check_digit(self):
+        self.assertFalse(_cn_resident_id_check_valid('110101199001010000'))
+
+    def test_x_check_char_accepted(self):
+        self.assertTrue(_cn_resident_id_check_valid('23010120000202100X'))
+
+    def test_wrong_length_rejected(self):
+        self.assertFalse(_cn_resident_id_check_valid('110101'))
+
+    def test_non_digit_in_prefix_rejected(self):
+        self.assertFalse(_cn_resident_id_check_valid('A1010119900101000X'))
+
+
+class TestImeiLuhnValidator(unittest.TestCase):
+    def test_valid_imei(self):
+        self.assertTrue(_imei_luhn_valid('490154203237518'))
+
+    def test_invalid_luhn(self):
+        self.assertFalse(_imei_luhn_valid('490154203237510'))
+
+    def test_wrong_length_rejected(self):
+        self.assertFalse(_imei_luhn_valid('12345'))
+
+
+class TestIccidLuhnValidator(unittest.TestCase):
+    def test_valid_iccid(self):
+        self.assertTrue(_iccid_luhn_valid('89014103211118510720'))
+
+    def test_invalid_iccid(self):
+        self.assertFalse(_iccid_luhn_valid('89014103211118510721'))
+
+    def test_wrong_length_rejected(self):
+        self.assertFalse(_iccid_luhn_valid('123456'))
+
+
+class TestZaIdValidator(unittest.TestCase):
+    def test_valid_id(self):
+        self.assertTrue(_za_id_luhn_valid('8001010000008'))
+
+    def test_invalid_check(self):
+        self.assertFalse(_za_id_luhn_valid('8001010000000'))
+
+    def test_wrong_length_rejected(self):
+        self.assertFalse(_za_id_luhn_valid('12345'))
+
+
+class TestJpMyNumberValidator(unittest.TestCase):
+    def test_valid_number(self):
+        self.assertTrue(_jp_my_number_check_valid('100000000005'))
+
+    def test_invalid_check(self):
+        self.assertFalse(_jp_my_number_check_valid('100000000000'))
+
+    def test_wrong_length_rejected(self):
+        self.assertFalse(_jp_my_number_check_valid('1234'))
+
+
+class TestMxClabeValidator(unittest.TestCase):
+    def test_valid_clabe(self):
+        self.assertTrue(_mx_clabe_check_valid('002194000000000037'))
+
+    def test_invalid_check(self):
+        self.assertFalse(_mx_clabe_check_valid('002194000000000000'))
+
+    def test_wrong_length_rejected(self):
+        self.assertFalse(_mx_clabe_check_valid('123456'))
 
 
 if __name__ == '__main__':

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent_core_lib.helpers.pii_patterns import find_pii_patterns
+from agent_core_lib.pii.pii_patterns import find_pii_patterns
 
 
 def _names(text: str) -> list[str]:
