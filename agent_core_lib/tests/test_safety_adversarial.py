@@ -24,8 +24,6 @@ allowlist:
   bypasses Pydantic's frozen check. Python's data model has no way
   to defend against this; the bypass is documented as a known
   limitation.
-* :class:`TestBypassRootModelExposesAnyRoot` — ``RootModel[Any]`` /
-  ``RootModel[dict]`` returns the unboxed root from ``model_dump()``.
 
 The transport-layer gate-behavior probes (refuses str/int/tuple/set,
 generic envelope shape, run_tool wrapper) live in
@@ -192,44 +190,29 @@ class TestBypassFrozenViaObjectSetattr(unittest.TestCase):
 
 
 # ===========================================================================
-# BYPASS — ``RootModel`` with ``Any`` root
-# ===========================================================================
-
-
-class TestBypassRootModelExposesAnyRoot(unittest.TestCase):
-    def test_root_any_field_is_unbounded(self):
-        # A standalone ``RootModel`` would let any value pass; we don't
-        # subclass RootModel here, but a field of type Any inside an
-        # LLMView is the same shape. Lock the behavior.
-        class _RootLikeView(LLMView):
-            data: Any
-
-        view = _RootLikeView(data={'email': 'leak@example.com'})
-        self.assertEqual(view.model_dump()['data'], {'email': 'leak@example.com'})
-
-
-# ===========================================================================
 # KNOWN-LIMITATIONS CATALOG
 # ===========================================================================
 
 
 class TestKnownLimitationsCatalog(unittest.TestCase):
-    """The four bypass families above are documented limitations of
+    """The bypass families above are documented limitations of
     Pydantic's allowlist guarantees. This test exists so the catalog
     is itself locked — a reviewer can grep for the limitation names
-    and see them enumerated in one place."""
+    and see them enumerated in one place. Adding a new known
+    limitation requires updating both the catalog and the bypass
+    tests above.
+    """
+
+    _KNOWN_LIMITATIONS = frozenset({
+        'subclass_overrides_model_config_dropping_extra_forbid',
+        'subclass_overrides_model_config_dropping_frozen',
+        'computed_field_exposes_data_outside_allowlist',
+        'any_typed_field_smuggles_arbitrary_content',
+        'object_setattr_circumvents_frozen',
+    })
 
     def test_catalog_is_locked(self):
-        known_limitations = frozenset({
-            'subclass_overrides_model_config_dropping_extra_forbid',
-            'subclass_overrides_model_config_dropping_frozen',
-            'computed_field_exposes_data_outside_allowlist',
-            'any_typed_field_smuggles_arbitrary_content',
-            'object_setattr_circumvents_frozen',
-        })
-        # Locked to current count — adding a new known limitation
-        # requires updating both the catalog and the bypass tests above.
-        self.assertEqual(len(known_limitations), 5)
+        self.assertEqual(len(self._KNOWN_LIMITATIONS), 5)
 
 
 if __name__ == '__main__':

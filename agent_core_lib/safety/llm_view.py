@@ -7,17 +7,19 @@ the declared field list a real allowlist.
 
 Two-layer structure (why):
 
-* :class:`llm_core_lib.safety.llm_view.LLMView` (stdlib ABC, no Pydantic
-  dep) is what :func:`llm_core_lib.safety.payload_gate.to_llm_payload`
+* :class:`llm_core_lib.safety.llm_view.LLMView` (plain Python marker
+  class, no Pydantic dep) is what
+  :func:`llm_core_lib.safety.payload_gate.to_llm_payload`
   ``isinstance``-checks against. It lives in the transport layer so
   the gate has a name to assert against without
   :mod:`llm_core_lib` having to depend on :mod:`agent_core_lib` (the
   existing ``test_boundary.py`` rule forbids that direction).
 * :class:`agent_core_lib.safety.llm_view.LLMView` — *this class* —
-  inherits from both the transport ABC and Pydantic's ``BaseModel``,
-  so it satisfies ``isinstance(view, LLMView)`` for the gate AND
-  carries the Pydantic ``ConfigDict`` enforcement. ``model_dump`` is
-  Pydantic's; the abstract method on the ABC is named to match.
+  inherits from both the transport marker and Pydantic's
+  ``BaseModel``, so it satisfies ``isinstance(view, LLMView)`` for
+  the gate AND carries the Pydantic ``ConfigDict`` enforcement.
+  ``model_dump`` is provided by Pydantic; the transport marker's
+  documented contract method is named to match (no wrapper needed).
 
 The Pydantic dependency lives in this repo's ``requirements.txt``
 (not in ``llm-core-lib``'s) because the data-shape contract for tool
