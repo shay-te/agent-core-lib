@@ -35,9 +35,9 @@ forbids `agent_core_lib` imports from that side.
 **Every new test file owns exactly one `unittest.TestCase` subclass, and the filename is the snake_case form of that class name.** This is a workspace-wide rule — see the "Test file organization" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rationale, the helper-module pattern, and the canonical examples.
 
 Inside this repo: any new file under `agent_core_lib/tests/` follows the rule. Examples in workflow terms:
-- New tests for a single behaviour of `find_pii_patterns` → one file, one TestCase named for that behaviour.
+- New tests for a single behaviour of `find_credential_patterns` → one file, one TestCase named for that behaviour.
 - Shared fakes / fixtures (a logger spy, a synthetic task, a config builder) go in a sibling `<topic>_helpers.py` module (no `test_` prefix so the test runner skips it).
-- Known multi-class outliers: `test_pii_scan.py` (3 TestCase classes, landed in this PR before the rule was formalized) and any pre-existing files like `test_credential_scan.py` (single-class, filename describes the module under test rather than mirroring the class name). Both should be split into one-TestCase-per-file the next time they're materially touched; until then they're documented exceptions, not endorsement.
+- Known outlier: `test_credential_scan.py` (single-class, filename describes the module under test rather than mirroring the class name). Should be split into one-TestCase-per-file the next time it's materially touched; until then it's a documented exception, not endorsement. PII tests no longer live here — they moved to `pii-core-lib/pii_core_lib/tests/` when the package was extracted.
 
 ## Tests prefer real collaborators over mocks
 
@@ -46,6 +46,6 @@ Inside this repo: any new file under `agent_core_lib/tests/` follows the rule. E
 Canonical example for this repo: `agent_core_lib/tests/test_credential_scan.py` runs `scan_text_for_credentials_and_phishing` end-to-end against the real detector functions; only the **logger** is mocked so the test can assert on `logger.warning.call_args_list`. The detector regex / phishing detector / summary builder are all real — there's nothing to fake there because they're pure functions.
 
 For new tests under `agent_core_lib/tests/`:
-- The SUT's direct collaborators (`PiiScrubber`, `CredentialScanner`, the per-task helper functions in `helpers/`) are pure Python — wire the real types and pass real data through. `mock.Mock(spec=...)` of a pure-Python helper is a smell.
+- The SUT's direct collaborators (`CredentialScanner`, the per-task helper functions in `helpers/`) are pure Python — wire the real types and pass real data through. `mock.Mock(spec=...)` of a pure-Python helper is a smell. (PII collaborators now live in `pii-core-lib`; the same rule applies there.)
 - The legitimate mock surfaces here are the **logger**, the **filesystem when destructive** (use `tempfile`), and any **outbound subprocess / SDK call** (Claude CLI / Codex CLI / OpenHands worker — the existing `MockClaudeClient` etc. in this repo are the pattern). The logger mock is for assertion, not isolation; everything else is mocked because the boundary itself can't run in a unit test.
 - Pre-existing tests with `MagicMock()` collaborators are **not** required to be rewritten — apply the rule forward, with new tests and any time you're materially rewriting an old one.
