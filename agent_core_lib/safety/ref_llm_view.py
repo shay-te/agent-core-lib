@@ -19,19 +19,20 @@ from agent_core_lib.safety.llm_view import LLMView
 from llm_core_lib.safety.llm_view import RefLLMView as _TransportRefLLMView
 
 
-RefType = NewType('RefType', str)
-"""Wire-string entity-type tag carried in the ``refs`` index.
+RefType = NewType('RefType', int)
+"""Wire-int entity-type tag carried in the ``refs`` index.
 
 Agent-core-lib is domain-agnostic — it does NOT enumerate which entity
-types exist. Consumers (the admin/backend layer) define their own enum
-or set of constants whose ``.value`` (or string itself) is what the
-helpers below see.
+types exist. Consumers (the admin/backend layer) define their own
+``IntEnum`` whose ``.value`` (or a bare int) is what the helpers below
+see. Int is the wire format because jsonb storage + render-path lookups
+are O(N-refs) per turn — every byte / hash op compounds.
 """
 
 
-def _coerce_ref_type(value: Union[RefType, str, Any]) -> str:
+def _coerce_ref_type(value: Union[RefType, int, Any]) -> int:
     raw = getattr(value, 'value', value)
-    return str(raw)
+    return int(raw)
 
 
 class RefLLMView(_TransportRefLLMView, LLMView):
@@ -73,25 +74,13 @@ class StatsRefLLMView(RefLLMView):
     stats: Any
 
 
-def build_ref(ref_type: Union[RefType, str], id_: int) -> Dict[str, Any]:
-    """Build one ``refs`` index entry.
-
-    Returns the persistence shape the render path keys on:
-    ``{'type': <str>, 'id': <int>}``. Use this helper at every tool
-    callsite so the wire format stays consistent. ``ref_type`` is
-    accepted as either a plain string or any object with a ``.value``
-    attribute (e.g. a consumer-defined ``str`` Enum).
-    """
-    return {'type': _coerce_ref_type(ref_type), 'id': int(id_)}
-
-
-def build_refs(ref_type: Union[RefType, str], ids: Iterable[int]) -> List[Dict[str, Any]]:
+def build_refs(ref_type: Union[RefType, int, Any], ids: Iterable[int]) -> List[Dict[str, Any]]:
     """Build a list of ``refs`` entries from an iterable of ids.
 
     Duplicates are removed in input order so the render path's per-type
     hydration batch is naturally minimal.
     """
-    type_str = _coerce_ref_type(ref_type)
+    type_id = _coerce_ref_type(ref_type)
     seen = set()
     out: List[Dict[str, Any]] = []
     for raw in ids:
@@ -101,22 +90,5 @@ def build_refs(ref_type: Union[RefType, str], ids: Iterable[int]) -> List[Dict[s
         if i in seen:
             continue
         seen.add(i)
-        out.append({'type': type_str, 'id': i})
-    return out
-
-
-def merge_refs(*ref_lists: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Flatten + dedupe several ``refs`` lists for a single message row.
-
-    Keying on ``(type, id)`` — the render path's hydration batch key.
-    """
-    seen = set()
-    out: List[Dict[str, Any]] = []
-    for refs in ref_lists:
-        for ref in refs or ():
-            key = (ref.get('type'), ref.get('id'))
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append({'type': ref['type'], 'id': ref['id']})
+        out.append({'type': type_id, 'id': i})
     return out

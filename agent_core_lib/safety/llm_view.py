@@ -9,8 +9,6 @@ behind the marker.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
-
 from pydantic import BaseModel, ConfigDict
 
 from llm_core_lib.safety.llm_view import LLMView as _TransportLLMView
@@ -30,15 +28,6 @@ class LLMView(_TransportLLMView, BaseModel):
     """
 
     model_config = ConfigDict(extra='forbid', frozen=True)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Alias of ``model_dump()`` for call sites that prefer the name."""
-        return self.model_dump()
-
-    @classmethod
-    def allowed_field_names(cls) -> frozenset:
-        """Return the field names this view exposes to the LLM."""
-        return frozenset(cls.model_fields.keys())
 
     @classmethod
     def project(cls, data):

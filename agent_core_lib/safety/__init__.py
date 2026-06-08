@@ -4,9 +4,7 @@ from agent_core_lib.safety.ref_llm_view import (
     RefLLMView,
     RefType,
     StatsRefLLMView,
-    build_ref,
     build_refs,
-    merge_refs,
 )
 
 __all__ = [
@@ -15,9 +13,7 @@ __all__ = [
     'RefLLMView',
     'RefType',
     'StatsRefLLMView',
-    'build_ref',
     'build_refs',
-    'merge_refs',
 ]
-# Note: ``RefType`` here is a ``NewType('RefType', str)`` — a wire-type
+# Note: ``RefType`` here is a ``NewType('RefType', int)`` — a wire-type
 # alias, not an enum. Consumers define their own enum of valid values.

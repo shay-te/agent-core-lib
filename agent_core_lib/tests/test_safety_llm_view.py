@@ -7,8 +7,7 @@ Three layers of coverage:
 1. The two ConfigDict flags are set on the base.
 2. ``extra='forbid'`` raises ``pydantic.ValidationError`` on unknown
    init kwargs; ``frozen=True`` raises on post-init mutation.
-3. The helpers (``to_dict``, ``allowed_field_names``, ``project``,
-   ``project_list``) behave as documented.
+3. The ``project`` / ``project_list`` helpers behave as documented.
 
 The transport-layer marker (no Pydantic) is tested separately in
 ``llm-core-lib/llm_core_lib/tests/test_safety_llm_view.py``. The
@@ -68,44 +67,11 @@ class TestLLMViewRejectsUnknownFields(unittest.TestCase):
             view.display_name = 'somebody else'
 
 
-class TestLLMViewToDict(unittest.TestCase):
-    def test_to_dict_returns_exactly_declared_fields(self):
-        view = _UserLLMView(id='u1', display_name='Jane')
-        self.assertEqual(view.to_dict(), {'id': 'u1', 'display_name': 'Jane'})
-
-    def test_model_dump_matches_to_dict(self):
-        # ``to_dict`` is a thin alias; lock that they agree.
-        view = _UserLLMView(id='u1', display_name='Jane')
-        self.assertEqual(view.to_dict(), view.model_dump())
-
-
-class TestLLMViewAllowedFieldNames(unittest.TestCase):
-    """Locks the reviewer-pinned-allowlist contract."""
-
-    def test_user_view_fields_are_locked(self):
-        self.assertEqual(
-            _UserLLMView.allowed_field_names(),
-            frozenset({'id', 'display_name'}),
-        )
-
-    def test_order_view_fields_are_locked(self):
-        self.assertEqual(
-            _OrderLLMView.allowed_field_names(),
-            frozenset({'id', 'total_cents'}),
-        )
-
-    def test_allowed_names_match_model_fields(self):
-        self.assertEqual(
-            _UserLLMView.allowed_field_names(),
-            frozenset(_UserLLMView.model_fields.keys()),
-        )
-
-
 class TestLLMViewProject(unittest.TestCase):
     def test_drops_keys_not_on_allowlist(self):
         raw = {'id': 'u1', 'display_name': 'Jane', 'email': 'jane@example.com'}
         view = _UserLLMView.project(raw)
-        self.assertEqual(view.to_dict(), {'id': 'u1', 'display_name': 'Jane'})
+        self.assertEqual(view.model_dump(), {'id': 'u1', 'display_name': 'Jane'})
 
     def test_none_input_returns_none(self):
         self.assertIsNone(_UserLLMView.project(None))
@@ -121,7 +87,7 @@ class TestLLMViewProject(unittest.TestCase):
             email = 'jane@example.com'  # not on the allowlist
 
         view = _UserLLMView.project(_Row())
-        self.assertEqual(view.to_dict(), {'id': 'u1', 'display_name': 'Jane'})
+        self.assertEqual(view.model_dump(), {'id': 'u1', 'display_name': 'Jane'})
 
 
 class TestLLMViewProjectList(unittest.TestCase):
@@ -136,8 +102,8 @@ class TestLLMViewProjectList(unittest.TestCase):
         ]
         views = _UserLLMView.project_list(raws)
         self.assertEqual(len(views), 2)
-        self.assertEqual(views[0].to_dict(), {'id': 'u1', 'display_name': 'Jane'})
-        self.assertEqual(views[1].to_dict(), {'id': 'u2', 'display_name': 'John'})
+        self.assertEqual(views[0].model_dump(), {'id': 'u1', 'display_name': 'Jane'})
+        self.assertEqual(views[1].model_dump(), {'id': 'u2', 'display_name': 'John'})
 
     def test_single_item_input_is_promoted_to_list(self):
         views = _UserLLMView.project_list({'id': 'u1', 'display_name': 'Jane'})

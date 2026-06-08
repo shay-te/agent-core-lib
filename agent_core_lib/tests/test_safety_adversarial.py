@@ -14,8 +14,8 @@ allowlist:
   via a class-decorator that re-applies the contract.
 * :class:`TestBypassComputedFieldLeaks` — a subclass adds a
   ``@computed_field`` that derives data outside the declared field
-  list. ``model_dump`` exposes it; ``allowed_field_names`` (which
-  reads ``model_fields``) doesn't see it. Two-API drift.
+  list. ``model_dump`` exposes it; ``model_fields`` doesn't see it.
+  Two-API drift.
 * :class:`TestBypassAnyTypedNestedDict` — a field typed ``dict`` or
   ``Any`` accepts arbitrary content that survives ``model_dump()``
   verbatim. The gate only enforces the OUTER type; per-field type
@@ -95,10 +95,9 @@ class TestBypassConfigDictOverride(unittest.TestCase):
 
 class TestBypassComputedFieldLeaks(unittest.TestCase):
     """A ``@computed_field`` derives a value at dump time that is NOT
-    in ``model_fields``. ``allowed_field_names()`` (which reads
-    ``model_fields``) misses it; ``model_dump()`` exposes it. The
-    two APIs drift. Lock so a future "scan computed fields too"
-    hardening has a regression test."""
+    in ``model_fields``. The declared allowlist misses it; ``model_dump``
+    exposes it. The two APIs drift — lock so a future "scan computed
+    fields too" hardening has a regression test."""
 
     def test_computed_field_exposes_data_not_in_allowlist(self):
         class _DerivedView(LLMView):
@@ -113,7 +112,7 @@ class TestBypassComputedFieldLeaks(unittest.TestCase):
 
         view = _DerivedView(id='u1', display_name='Jane')
         # ``model_fields`` (allowlist) misses it...
-        self.assertNotIn('email_domain', _DerivedView.allowed_field_names())
+        self.assertNotIn('email_domain', _DerivedView.model_fields.keys())
         # ...but ``model_dump`` exposes it.
         self.assertIn('email_domain', view.model_dump())
 
