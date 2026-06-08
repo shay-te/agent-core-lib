@@ -11,8 +11,7 @@ the payload — never by adding a ``type`` field to ``RefLLMView`` itself.
 """
 from __future__ import annotations
 
-import enum
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, NewType, Optional, Union
 
 from pydantic import ConfigDict
 
@@ -20,29 +19,19 @@ from agent_core_lib.safety.llm_view import LLMView
 from llm_core_lib.safety.llm_view import RefLLMView as _TransportRefLLMView
 
 
-class RefType(str, enum.Enum):
-    """Entity types the render path knows how to hydrate.
+RefType = NewType('RefType', str)
+"""Wire-string entity-type tag carried in the ``refs`` index.
 
-    Values are stable wire strings — the persistence layer stores them
-    in the ``refs`` jsonb column and the render path keys hydration
-    batches on them.
-    """
-    USER = 'user'
-    ADMIN_USER = 'admin_user'
-    ORGANIZATION = 'organization'
-    CONVERSATION = 'conversation'
-    CONVERSATION_MESSAGE = 'conversation_message'
-    TASK = 'task'
-    PACKAGE = 'package'
-    PACKAGE_ITEM = 'package_item'
-    EVENT = 'event'
-    EVENT_TICKET = 'event_ticket'
-    WORKFLOW = 'workflow'
-    FORM = 'form'
-    FORM_SUBMISSION = 'form_submission'
-    CUSTOM_FIELD = 'custom_field'
-    USER_COMMENT = 'user_comment'
-    MATCH_EXPLANATION = 'match_explanation'
+Agent-core-lib is domain-agnostic — it does NOT enumerate which entity
+types exist. Consumers (the admin/backend layer) define their own enum
+or set of constants whose ``.value`` (or string itself) is what the
+helpers below see.
+"""
+
+
+def _coerce_ref_type(value: Union[RefType, str, Any]) -> str:
+    raw = getattr(value, 'value', value)
+    return str(raw)
 
 
 class RefLLMView(_TransportRefLLMView, LLMView):
@@ -84,22 +73,25 @@ class StatsRefLLMView(RefLLMView):
     stats: Any
 
 
-def build_ref(ref_type: RefType, id_: int) -> Dict[str, Any]:
+def build_ref(ref_type: Union[RefType, str], id_: int) -> Dict[str, Any]:
     """Build one ``refs`` index entry.
 
     Returns the persistence shape the render path keys on:
-    ``{'type': '<RefType.value>', 'id': <int>}``. Use this helper at
-    every tool callsite so the wire format stays consistent.
+    ``{'type': <str>, 'id': <int>}``. Use this helper at every tool
+    callsite so the wire format stays consistent. ``ref_type`` is
+    accepted as either a plain string or any object with a ``.value``
+    attribute (e.g. a consumer-defined ``str`` Enum).
     """
-    return {'type': ref_type.value, 'id': int(id_)}
+    return {'type': _coerce_ref_type(ref_type), 'id': int(id_)}
 
 
-def build_refs(ref_type: RefType, ids: Iterable[int]) -> List[Dict[str, Any]]:
+def build_refs(ref_type: Union[RefType, str], ids: Iterable[int]) -> List[Dict[str, Any]]:
     """Build a list of ``refs`` entries from an iterable of ids.
 
     Duplicates are removed in input order so the render path's per-type
     hydration batch is naturally minimal.
     """
+    type_str = _coerce_ref_type(ref_type)
     seen = set()
     out: List[Dict[str, Any]] = []
     for raw in ids:
@@ -109,7 +101,7 @@ def build_refs(ref_type: RefType, ids: Iterable[int]) -> List[Dict[str, Any]]:
         if i in seen:
             continue
         seen.add(i)
-        out.append({'type': ref_type.value, 'id': i})
+        out.append({'type': type_str, 'id': i})
     return out
 
 

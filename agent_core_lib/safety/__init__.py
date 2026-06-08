@@ -19,3 +19,5 @@ __all__ = [
     'build_refs',
     'merge_refs',
 ]
+# Note: ``RefType`` here is a ``NewType('RefType', str)`` — a wire-type
+# alias, not an enum. Consumers define their own enum of valid values.

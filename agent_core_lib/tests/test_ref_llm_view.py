@@ -27,11 +27,14 @@ from pydantic import ValidationError
 
 from agent_core_lib.safety.ref_llm_view import (
     RefLLMView,
-    RefType,
     build_ref,
     build_refs,
     merge_refs,
 )
+
+
+_FAKE_TYPE_A = 'fake_type_a'
+_FAKE_TYPE_B = 'fake_type_b'
 
 
 class TestRefLLMViewWireShape(unittest.TestCase):
@@ -82,34 +85,50 @@ class TestBuildRefHelpers(unittest.TestCase):
 
     def test_build_ref_returns_canonical_wire_shape(self):
         self.assertEqual(
-            build_ref(RefType.USER, 10), {'type': 'user', 'id': 10},
+            build_ref(_FAKE_TYPE_A, 10), {'type': _FAKE_TYPE_A, 'id': 10},
         )
 
     def test_build_refs_dedupes_preserving_first_seen_order(self):
         self.assertEqual(
-            build_refs(RefType.USER, [10, 10, 20]),
-            [{'type': 'user', 'id': 10}, {'type': 'user', 'id': 20}],
+            build_refs(_FAKE_TYPE_A, [10, 10, 20]),
+            [{'type': _FAKE_TYPE_A, 'id': 10},
+             {'type': _FAKE_TYPE_A, 'id': 20}],
         )
 
     def test_build_refs_drops_none_entries(self):
         self.assertEqual(
-            build_refs(RefType.USER, [10, None, 20]),
-            [{'type': 'user', 'id': 10}, {'type': 'user', 'id': 20}],
+            build_refs(_FAKE_TYPE_A, [10, None, 20]),
+            [{'type': _FAKE_TYPE_A, 'id': 10},
+             {'type': _FAKE_TYPE_A, 'id': 20}],
         )
+
+    def test_build_ref_accepts_enum_like_with_value(self):
+        # Consumer-defined enums (str + Enum) expose ``.value`` — the
+        # helper coerces transparently so callers can stay typed.
+        import enum
+
+        class _Consumer(str, enum.Enum):
+            X = 'x'
+
+        self.assertEqual(build_ref(_Consumer.X, 7), {'type': 'x', 'id': 7})
 
     def test_merge_refs_dedupes_by_type_id_pair(self):
         merged = merge_refs(
-            [{'type': 'user', 'id': 10}],
-            [{'type': 'user', 'id': 10}, {'type': 'task', 'id': 5}],
+            [{'type': _FAKE_TYPE_A, 'id': 10}],
+            [{'type': _FAKE_TYPE_A, 'id': 10},
+             {'type': _FAKE_TYPE_B, 'id': 5}],
         )
         self.assertEqual(
             merged,
-            [{'type': 'user', 'id': 10}, {'type': 'task', 'id': 5}],
+            [{'type': _FAKE_TYPE_A, 'id': 10},
+             {'type': _FAKE_TYPE_B, 'id': 5}],
         )
 
     def test_merge_refs_handles_none_lists(self):
-        self.assertEqual(merge_refs(None, [{'type': 'user', 'id': 1}]),
-                         [{'type': 'user', 'id': 1}])
+        self.assertEqual(
+            merge_refs(None, [{'type': _FAKE_TYPE_A, 'id': 1}]),
+            [{'type': _FAKE_TYPE_A, 'id': 1}],
+        )
 
 
 if __name__ == '__main__':
