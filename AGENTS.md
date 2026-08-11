@@ -1,12 +1,41 @@
-# AGENTS Notes
+# AGENTS Notes — agent-core-lib
 
-## Workspace-wide coding convention (non-negotiable)
+## Built on core-lib — read its rulebook first
 
-**Every Python method that reads fields out of a config or a raw response object follows fetch → validate → use, in that order, with no fallback defaults and no aliases.** See the "Coding conventions (workspace-wide, all Python repos)" section in `architecture.md` — the canonical examples are the three `*ConnectionFactory.__init__` methods in `llm-core-lib/llm_core_lib/connections/` and their `_invoke` / `_invoke_chat` / `_extract_text` / `embed` response-parsing methods.
+This library is a `*-core-lib`. The shared architecture, conventions, and
+scaffolding are **not** repeated here — they live in the `core-lib` package
+(the `../core-lib/` checkout beside this repo, or the installed `core-lib`):
 
-Concretely: no `config.get('region', 'us-east-1')` inline defaults, no `model_id or model` alias chains, no `getattr(block, 'text', '') or ''` inside generator expressions or final returns. Pull every field into a named local at the top, validate / normalize next, then use the named locals.
+| Read | For |
+|---|---|
+| `core-lib/BUILDING_A_CORE_LIB.md` | **Read first** when building a new layer or feature — mental model, full anatomy, ordered build sequence, decision guide, recurring mistakes, Definition of Done. |
+| `core-lib/AGENTS.md` | The engineering rules (§1–§8): coding conventions, file/package organization, data layer, service layer, connections, enums, testing. |
+| `core-lib/skills/` | Copy-paste scaffolding templates, one per core-lib part. |
 
-Inside this repo the rule applies to:
+**MANDATORY — before you create or modify any part below, first load the
+matching core-lib skill** (open and follow it). This is a hard rule: match the
+row and load the skill *before* writing code. Never write core-lib code from
+memory when a matching skill exists.
+
+| If you are about to… | You MUST first load |
+|---|---|
+| add or change an entity / table / model / column / nested enum | `core-lib-entity` |
+| add or change a DataAccess / DAO / repository / query / get_by / list | `core-lib-data-access` |
+| add or change a Service / business logic / public method / caching | `core-lib-service` |
+| add or change an external client / provider / SDK / connection factory | `core-lib-connection` |
+| add a migration / alter / create / drop a table, column, index, constraint | `core-lib-migration` |
+| add / fix / restructure tests or raise coverage | `core-lib-tests` |
+
+Everything below this line is **agent-core-lib-specific** — lessons that apply only to
+this library. Anything generic belongs in `core-lib/AGENTS.md` instead, so every
+core-lib inherits it.
+
+---
+
+## Where fetch → validate → use bites in this repo
+
+The rule itself is core-lib **§1.1**. These are the call sites in this repo that
+most often violate it — check them first:
 
 - **`agent_core_lib/client/agent_client_factory.py`** — both Claude and OpenHands config-builders. Every `getattr(cli_cfg, 'binary', '') or ''`-style call inside the dict literal must be hoisted into a named fetch local, validated, then dropped into the dataclass / dict in the use block.
 - **`agent_core_lib/helpers/agent_prompt_utils.py`** — every function that builds a prompt string from a `task` / `prepared_task` / `comment` / `repository` object. Pull `branch_name = getattr(task, 'branch_name', '')`, `repository_branches = getattr(task, 'repository_branches', {}) or {}`, etc. into a fetch block at the top of the function, not inline at the call site.
@@ -14,7 +43,8 @@ Inside this repo the rule applies to:
 - **`agent_core_lib/helpers/resume_prompt_utils.py`** — same for the per-event `getattr(event, 'event_type', '')` / `getattr(event, 'raw', {})` extractions.
 - **`agent_core_lib/helpers/result_utils.py`** — even the small `payload.get(ImplementationFields.SUCCESS, default)` site at the top of a function is fine; the rule kicks in the moment a second `.get(...)` joins the body.
 
-Variable names: spell out what the value is. No `cfg`, `ws`, `bf`, `s`, `c`, `d`, `r` shorthand. `claude_config`, `workspace`, `bedrock_factory`, `service`, `collection`, `document` instead. See the matching rule in `library-core-lib/AGENTS.md` for the full list.
+In this repo that means `claude_config`, `workspace`, `bedrock_factory` — not
+`cfg`, `ws`, `bf` (core-lib §1.2).
 
 ## `requirements.txt` carries `pydantic>=2.0`
 
@@ -30,22 +60,18 @@ split keeps `llm-core-lib` a pure transport library (no Pydantic
 import) and respects its boundary test (`test_boundary.py`) that
 forbids `agent_core_lib` imports from that side.
 
-## Test file organization — one TestCase per file, filename mirrors the class
+## Testing in this repo
 
-**Every new test file owns exactly one `unittest.TestCase` subclass, and the filename is the snake_case form of that class name.** This is a workspace-wide rule — see the "Test file organization" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rationale, the helper-module pattern, and the canonical examples.
+The rules are core-lib **§7.1** (one `TestCase` per file) and **§7.2** (real
+collaborators, mock only true boundaries). Repo-specific application:
 
-Inside this repo: any new file under `agent_core_lib/tests/` follows the rule. Examples in workflow terms:
-- New tests for a single behaviour of a helper (a prompt builder, a session-id util) → one file, one TestCase named for that behaviour.
-- Shared fakes / fixtures (a logger spy, a synthetic task, a config builder) go in a sibling `<topic>_helpers.py` module (no `test_` prefix so the test runner skips it).
-- PII tests no longer live here — they moved to `pii-core-lib/pii_core_lib/tests/` when the package was extracted. Credential-detection tests moved at the same time (the credential scanner is a sensitive-data detector and lives next to the PII patterns in `pii-core-lib`).
-
-## Tests prefer real collaborators over mocks
-
-**Mock at infrastructure boundaries, not at internal seams.** Workspace-wide rule — see the "Tests prefer real collaborators over mocks" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rule, the "is this a useful test?" check, and the list of where mocks belong vs. where they don't.
-
-Canonical example for the workspace-wide rule lives in `pii-core-lib/pii_core_lib/tests/test_credential_scan.py` (the credential / phishing scanner moved there with the rest of the sensitive-data detectors). The pattern still applies inside this repo for the remaining helper tests.
-
-For new tests under `agent_core_lib/tests/`:
-- The SUT's direct collaborators (the per-task helper functions in `helpers/`) are pure Python — wire the real types and pass real data through. `mock.Mock(spec=...)` of a pure-Python helper is a smell. (Sensitive-data collaborators — PII patterns, credential patterns — now live in `pii-core-lib`; the same rule applies there.)
-- The legitimate mock surfaces here are the **logger**, the **filesystem when destructive** (use `tempfile`), and any **outbound subprocess / SDK call** (Claude CLI / Codex CLI / OpenHands worker — the existing `MockClaudeClient` etc. in this repo are the pattern). The logger mock is for assertion, not isolation; everything else is mocked because the boundary itself can't run in a unit test.
-- Pre-existing tests with `MagicMock()` collaborators are **not** required to be rewritten — apply the rule forward, with new tests and any time you're materially rewriting an old one.
+- Tests live under `agent_core_lib/tests/`. Shared fakes (a logger spy, a
+  synthetic task, a config builder) go in a sibling `<topic>_helpers.py`.
+- The SUT's direct collaborators here are the pure-Python helpers in
+  `helpers/` — wire the real types. `mock.Mock(spec=...)` of one is a smell.
+- **Legitimate mock surfaces in this repo:** the logger (for assertion, not
+  isolation), the filesystem when destructive (use `tempfile`), and outbound
+  subprocess / SDK calls — Claude CLI / Codex CLI / OpenHands worker, for which
+  `MockClaudeClient` and friends are the established pattern.
+- PII and credential-detection tests are **not** here — they moved to
+  `pii-core-lib/pii_core_lib/tests/` when that package was extracted.
