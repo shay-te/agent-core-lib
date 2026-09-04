@@ -139,7 +139,7 @@ is unset. Prefer the generic name for new consumers.
 ## Development / testing
 
 ```bash
-python -m unittest discover -s agent_core_lib/tests -p "test_*.py"
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
 Tests are self-contained and use fake keys, localhost URLs, and fake

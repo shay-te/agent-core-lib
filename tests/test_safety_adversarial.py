@@ -27,7 +27,7 @@ allowlist:
 
 The transport-layer gate-behavior probes (refuses str/int/tuple/set,
 generic envelope shape, run_tool wrapper) live in
-``llm-core-lib/llm_core_lib/tests/test_safety_adversarial.py``.
+``llm-core-lib/tests/test_safety_adversarial.py``.
 """
 from __future__ import annotations
 

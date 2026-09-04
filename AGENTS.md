@@ -34,18 +34,18 @@ forbids `agent_core_lib` imports from that side.
 
 **Every new test file owns exactly one `unittest.TestCase` subclass, and the filename is the snake_case form of that class name.** This is a workspace-wide rule — see the "Test file organization" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rationale, the helper-module pattern, and the canonical examples.
 
-Inside this repo: any new file under `agent_core_lib/tests/` follows the rule. Examples in workflow terms:
+Inside this repo: any new file under `tests/` follows the rule. Examples in workflow terms:
 - New tests for a single behaviour of a helper (a prompt builder, a session-id util) → one file, one TestCase named for that behaviour.
 - Shared fakes / fixtures (a logger spy, a synthetic task, a config builder) go in a sibling `<topic>_helpers.py` module (no `test_` prefix so the test runner skips it).
-- PII tests no longer live here — they moved to `pii-core-lib/pii_core_lib/tests/` when the package was extracted. Credential-detection tests moved at the same time (the credential scanner is a sensitive-data detector and lives next to the PII patterns in `pii-core-lib`).
+- PII tests no longer live here — they moved to `pii-core-lib/tests/` when the package was extracted. Credential-detection tests moved at the same time (the credential scanner is a sensitive-data detector and lives next to the PII patterns in `pii-core-lib`).
 
 ## Tests prefer real collaborators over mocks
 
 **Mock at infrastructure boundaries, not at internal seams.** Workspace-wide rule — see the "Tests prefer real collaborators over mocks" sub-section of "Coding conventions (workspace-wide, all Python repos)" in `architecture.md` for the full rule, the "is this a useful test?" check, and the list of where mocks belong vs. where they don't.
 
-Canonical example for the workspace-wide rule lives in `pii-core-lib/pii_core_lib/tests/test_credential_scan.py` (the credential / phishing scanner moved there with the rest of the sensitive-data detectors). The pattern still applies inside this repo for the remaining helper tests.
+Canonical example for the workspace-wide rule lives in `pii-core-lib/tests/test_credential_scan.py` (the credential / phishing scanner moved there with the rest of the sensitive-data detectors). The pattern still applies inside this repo for the remaining helper tests.
 
-For new tests under `agent_core_lib/tests/`:
+For new tests under `tests/`:
 - The SUT's direct collaborators (the per-task helper functions in `helpers/`) are pure Python — wire the real types and pass real data through. `mock.Mock(spec=...)` of a pure-Python helper is a smell. (Sensitive-data collaborators — PII patterns, credential patterns — now live in `pii-core-lib`; the same rule applies there.)
 - The legitimate mock surfaces here are the **logger**, the **filesystem when destructive** (use `tempfile`), and any **outbound subprocess / SDK call** (Claude CLI / Codex CLI / OpenHands worker — the existing `MockClaudeClient` etc. in this repo are the pattern). The logger mock is for assertion, not isolation; everything else is mocked because the boundary itself can't run in a unit test.
 - Pre-existing tests with `MagicMock()` collaborators are **not** required to be rewritten — apply the rule forward, with new tests and any time you're materially rewriting an old one.

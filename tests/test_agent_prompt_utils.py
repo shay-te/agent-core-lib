@@ -90,7 +90,10 @@ class WorkspaceScopeBlockBranchTests(unittest.TestCase):
         # paths config would silently render a malformed scope block.
         # Mixing in a real path proves the loop continues correctly.
         block = workspace_scope_block(['.', '', '/wks/PROJ/repo-a'])
-        self.assertIn('/wks/PROJ/repo-a', block)
+        # ``workspace_scope_block`` renders platform-native paths via
+        # ``os.path.normpath``, so compare against the normalized form
+        # rather than the POSIX literal.
+        self.assertIn(os.path.normpath('/wks/PROJ/repo-a'), block)
         # The bullet list shouldn't contain a lone '.' or empty line.
         self.assertNotIn('  - .\n', block)
         self.assertNotIn('  - \n', block)

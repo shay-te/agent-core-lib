@@ -1,0 +1,4 @@
+defaults:
+  - core_lib
+  - agent_core_lib
+  - agent_core_lib_test
