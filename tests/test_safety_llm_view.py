@@ -10,9 +10,10 @@ Three layers of coverage:
 3. The ``project`` / ``project_list`` helpers behave as documented.
 
 The transport-layer marker (no Pydantic) is tested separately in
-``llm-core-lib/llm_core_lib/tests/test_safety_llm_view.py``. The
+``llm-core-lib/tests/test_llm_view_is_a_class.py`` and
+``llm-core-lib/tests/test_llm_view_isinstance_check.py``. The
 adversarial Pydantic-bypass probes live in
-``agent_core_lib/tests/test_safety_adversarial.py`` next to this file.
+``tests/test_safety_adversarial.py`` next to this file.
 """
 from __future__ import annotations
 

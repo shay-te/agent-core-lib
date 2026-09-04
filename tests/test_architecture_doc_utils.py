@@ -91,8 +91,13 @@ class ReadArchitectureDocTests(unittest.TestCase):
     def test_expands_tilde_in_path(self) -> None:
         # ``~/ARCHITECTURE.md`` should resolve to ``$HOME/ARCHITECTURE.md``.
         original_home = os.environ.get('HOME')
+        original_user_profile = os.environ.get('USERPROFILE')
         os.environ['HOME'] = str(self.tmp_root)
+        # ``expanduser`` reads USERPROFILE on Windows and HOME on POSIX,
+        # so set both to keep the test platform-portable.
+        os.environ['USERPROFILE'] = str(self.tmp_root)
         self.addCleanup(self._restore_home, original_home)
+        self.addCleanup(self._restore_user_profile, original_user_profile)
         _write(self.tmp_root / 'ARCHITECTURE.md', '# tilde-resolved')
 
         result = read_architecture_doc('~/ARCHITECTURE.md')
@@ -106,6 +111,13 @@ class ReadArchitectureDocTests(unittest.TestCase):
             os.environ.pop('HOME', None)
         else:
             os.environ['HOME'] = original_home
+
+    @staticmethod
+    def _restore_user_profile(original_user_profile: str | None) -> None:
+        if original_user_profile is None:
+            os.environ.pop('USERPROFILE', None)
+        else:
+            os.environ['USERPROFILE'] = original_user_profile
 
 
 if __name__ == '__main__':
